@@ -1,0 +1,14 @@
+# עבודה עם Kafka
+kafka-python==2.0.2
+
+# עבודה עם Firebase
+firebase-admin==6.5.0
+
+# טיפול ב-JSON, תאריכים, וכו'
+python-dateutil==2.9.0.post0
+
+# במידת הצורך לתצוגת טרמינל (view שלך)
+rich==13.7.1
+
+# ספריה כללית לתקשורת (לא חובה, אבל שימושית)
+requests==2.32.3
