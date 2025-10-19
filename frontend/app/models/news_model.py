@@ -1,3 +1,5 @@
+# app/models/news_model.py
+
 class NewsItem:
     def __init__(self, title, description, image_url, tags):
         self.title = title
