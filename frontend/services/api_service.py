@@ -5,6 +5,8 @@ from dotenv import load_dotenv
 # טוענים את משתני הסביבה
 load_dotenv()
 
+
+
 API_URL = os.getenv("BACKEND_API_URL")  # http://localhost:8000
 
 def get_news_by_topic(topic: str):
