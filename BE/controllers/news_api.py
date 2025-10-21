@@ -7,34 +7,38 @@ import numpy as np
 
 API_KEY = "cf0598a600744dbb8092ef66ea26ae2b"
 BASE_URL = "https://newsapi.org/v2/top-headlines"
-DEFAULT_IMAGE_URL = "https://example.com/default-image.jpg"  # ברירת מחדל
-SERP_API_KEY = "your_serpapi_key"  # מפתח ל־SerpAPI
+DEFAULT_IMAGE_URL = "https://example.com/default-image.jpg"
+SERP_API_KEY = "your_serpapi_key"
 
-# רשימת הנושאים שהגדרת
+# נושאים אפשריים
 TOPICS = [
     "Politics", "Finance", "Science", "Culture",
     "Sport", "Technology", "Health", "World"
 ]
 
-# מודל סיווג טקסט מ-Hugging Face
-classifier = pipeline("text-classification", model="distilbert-base-uncased")
+# מודל Hugging Face מתאים לסיווג נושאים (Zero-shot)
+classifier = pipeline(
+    "zero-shot-classification",
+    model="facebook/bart-large-mnli"
+)
 
 def classify_article(content):
     if not content:
         return "World"
     try:
-        result = classifier(content[:512])
-        label = result[0]['label'].upper()
-        if "POL" in label: return "Politics"
-        if "FIN" in label: return "Finance"
-        if "SCI" in label: return "Science"
-        if "CULT" in label: return "Culture"
-        if "SPORT" in label: return "Sport"
-        if "TECH" in label: return "Technology"
-        if "HEALTH" in label: return "Health"
+        result = classifier(content[:512], TOPICS)
+        label = result["labels"][0]
+        return label
+    except Exception as e:
+        print("Classification error:", e)
         return "World"
-    except:
-        return "World"
+    
+# בדיקת סיווג ישירה
+if __name__ == "__main__":
+    test_text = "The government announced new economic reforms and tax cuts today."
+    print("Testing classification on sample text:")
+    print(classify_article(test_text))
+
 
 def summarize_article(content, max_chars=200):
     if not content:
@@ -48,7 +52,7 @@ def fetch_image_from_google(query):
     try:
         params = {
             "q": query,
-            "tbm": "isch",  # חיפוש תמונות
+            "tbm": "isch",
             "ijn": "0",
             "api_key": SERP_API_KEY
         }
@@ -84,24 +88,20 @@ def fetch_and_save_news(country="us", category=None):
     for article in data.get("articles", []):
         content = article.get("description") or article.get("content")
         if not content:
-            continue  # דילוג על מאמרים ללא תוכן
+            continue
 
         news_id = str(uuid.uuid4())
         title = article.get("title", "")
         source = article.get("source", {}).get("name", "")
         url = article.get("url", "")
-        image_url = article.get("urlToImage")
-        if not image_url:
-            image_url = fetch_image_from_google(title)
+        image_url = article.get("urlToImage") or fetch_image_from_google(title)
 
-        # ניתוח טקסט עם Hugging Face
         analysis = analyze_article(title, content)
         entities = analysis.get("entities", [])
         for e in entities:
             if 'score' in e:
                 e['score'] = safe_float(e['score'])
 
-        # סיווג ותמצות
         classification = classify_article(content)
         summary = summarize_article(content)
 
