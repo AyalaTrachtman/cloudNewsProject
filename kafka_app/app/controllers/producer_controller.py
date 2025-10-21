@@ -25,6 +25,12 @@ producer = KafkaProducer(
     value_serializer=lambda m: m.to_json().encode('utf-8')
 )
 
+# רשימת קטגוריות חוקיות בלבד
+VALID_TOPICS = [
+    "Politics", "Finance", "Science", "Culture", "Sport",
+    "Technology", "Health", "World"
+]
+
 def send_message_to_kafka(doc):
     """שולח מסמך ל-Kafka תוך טיפול ב-topic חוקי"""
     msg = Message(
@@ -46,6 +52,11 @@ def send_message_to_kafka(doc):
 
     # ממיר ל-str ומחליף תווים לא חוקיים
     topic = re.sub(r'[^a-zA-Z0-9._-]', '_', str(topic))
+
+    # מוודא שהטופיק נמצא ברשימת הקטגוריות החוקיות בלבד
+    if topic not in VALID_TOPICS:
+        print(f"[Producer] ⚠️ Invalid topic '{topic}', using 'World' instead.")
+        topic = "World"
 
     print(f"[Producer] Sending to topic '{topic}' ({type(topic)})")
     producer.send(topic, msg)

@@ -82,11 +82,9 @@ with gr.Blocks() as demo:
         for cat in CATEGORIES:
             btn = gr.Button(cat)
             category_buttons.append(btn)
-
-    news_output = gr.Markdown()
-
-    # לחיצה על כל כפתור מעדכנת את החדשות
-    for btn, cat in zip(category_buttons, CATEGORIES):
-        btn.click(fn=lambda c=cat: get_news_for_category(c), inputs=[], outputs=[news_output])
+        news_output = gr.Markdown()
+        # לחיצה על כל כפתור מעדכנת את החדשות
+        for btn, cat in zip(category_buttons, CATEGORIES):
+            btn.click(fn=lambda c=cat: get_news_for_category(c), inputs=[], outputs=[news_output])
 
 demo.launch(inbrowser=True)
