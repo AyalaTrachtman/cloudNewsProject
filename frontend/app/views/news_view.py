@@ -87,4 +87,6 @@ with gr.Blocks() as demo:
         for btn, cat in zip(category_buttons, CATEGORIES):
             btn.click(fn=lambda c=cat: get_news_for_category(c), inputs=[], outputs=[news_output])
 
+
 demo.launch(inbrowser=True)
+
