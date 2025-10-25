@@ -41,7 +41,8 @@ def send_message_to_kafka(doc):
         source=doc.get('source'),
         image_url=doc.get('image_url'),
         classification=doc.get('classification'),
-        entities=doc.get('entities', [])
+        entities=doc.get('entities', []),
+        published_at=doc.get('published_at')
     )
 
     classification = doc.get('classification')

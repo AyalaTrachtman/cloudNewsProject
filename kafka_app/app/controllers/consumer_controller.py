@@ -3,7 +3,7 @@ import json
 import queue
 import threading
 
-# --- הגדרת קטגוריות ---
+# --- קטגוריות ---
 CATEGORIES = ["Politics", "Finance", "Science", "Culture", "Sport", "Technology", "Health", "World"]
 
 # --- יצירת תורים נפרדים לכל קטגוריה ---
@@ -11,18 +11,19 @@ news_queues = {cat: queue.Queue() for cat in CATEGORIES}
 
 KAFKA_BROKER = "localhost:9092"
 
-# --- יצירת KafkaConsumer שמאזין לכל 8 הקטגוריות ---
+# --- יצירת KafkaConsumer ---
 consumer = KafkaConsumer(
     *CATEGORIES,  # מאזין לכל הטופיקים
     bootstrap_servers=[KAFKA_BROKER],
-    auto_offset_reset='earliest',  # קבלת הודעות מההתחלה
-    enable_auto_commit=False,
-    group_id='news_consumer_test',
+    auto_offset_reset='earliest',       # מאזין רק להודעות חדשות
+    enable_auto_commit=True,          # שומר את המיקום האחרון שקרא
+    group_id='news_consumer_group',   # מזהה קבוצה ייחודי לצרכן
     value_deserializer=lambda m: json.loads(m.decode('utf-8'))
 )
 
-def start_consumer():
-    print(f"[Consumer] Listening to topics: {', '.join(CATEGORIES)}")
+def consume_messages():
+    """מאזין להודעות חדשות בלבד ומכניס לתורים הרלוונטיים"""
+    print(f"[Consumer] ✅ Listening for NEW messages on topics: {', '.join(CATEGORIES)}")
     for message in consumer:
         data = message.value
 
@@ -32,24 +33,29 @@ def start_consumer():
         news_item.description = data.get("content", "")
         news_item.image_url = data.get("image_url", "")
         news_item.link = data.get("url", "")
+        news_item.published_at = data.get("published_at", "")
 
-        # קביעת קטגוריה מתוך ה-topic שנשלח בפועל
+        # קביעת קטגוריה מתוך ה-topic
         topic_name = message.topic
         category = topic_name if topic_name in news_queues else data.get("classification", "World")
 
-        # אם הקטגוריה לא קיימת, נכניס כברירת מחדל ל-"World"
         if category not in news_queues:
             category = "World"
 
         news_queues[category].put(news_item)
-        print(f"[Consumer] Received: {news_item.title} (Topic: {message.topic}, Category: {category})")
+        print(f"[Consumer] 📰 New article: {news_item.title} (Topic: {topic_name})")
 
-if _name_ == "_main_":
-    t = threading.Thread(target=start_consumer, daemon=True)
+def start_consumer():
+    """מפעיל את הצרכן ברקע (thread)"""
+    t = threading.Thread(target=consume_messages, daemon=True)
     t.start()
+    print("[Consumer] 🚀 Consumer started and waiting for new messages...")
 
+if __name__ == "__main__":
+    start_consumer()
     try:
         while True:
-            pass
+            pass  # נשאר במצב האזנה תמידי
     except KeyboardInterrupt:
-        print("\n[Test] Stopped by user")
+        print("\n[Consumer] 🛑 Stopped by user.")
+ 

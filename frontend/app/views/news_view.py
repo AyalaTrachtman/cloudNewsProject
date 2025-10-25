@@ -51,7 +51,7 @@ def start_consumer():
         news_item.description = data.get("content", "")
         news_item.image_url = data.get("image_url", "")
         news_item.link = data.get("url", "")
-
+        news_item.published_at = data.get("published_at", "Unknown date")
         topic_name = message.topic
         category = topic_name if topic_name in news_queues else data.get("classification", "World")
         if category not in news_queues:
@@ -72,33 +72,229 @@ def update_news():
 threading.Thread(target=start_consumer, daemon=True).start()
 threading.Thread(target=update_news, daemon=True).start()
 
-# --- CSS ---
+# --- CSS מעודכן ---
 css = """
-.category-btn-container { display: flex; justify-content: flex-start; align-items: center; overflow-x: auto; white-space: nowrap; padding: 14px 30px; position: fixed; top: 0; left: 0; width: 100%; background-color: #fff; z-index: 1000; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
-.logo { font-size: 24px; font-weight: bold; margin-right: 20px; }
-.category-btn { border: none; padding: 0 4px; margin: 0 2px; border-radius: 12px; font-size: 22px; cursor: pointer; color: white; background-color: #555; flex: 0 0 auto; width: auto; min-width: 0; box-sizing: content-box; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; transition: transform 0.2s, background 0.2s; }
-.category-btn:hover { transform: scale(1.05); }
+.category-btn-container {
+    display: flex;
+    justify-content: flex-start;
+    align-items: center;
+    overflow-x: auto;
+    white-space: nowrap;
+    padding: 11px 30px;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    background-color: rgba(255, 255, 255, 0.20);
+    z-index: 1000;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
 
-.news-output { margin-top: 80px; padding: 20px; box-sizing: border-box; width: 100%; }
+.logo { 
+    font-size: 24px; 
+    font-weight: bold; 
+    margin-right: 20px; 
+}
 
-.news-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+.category-btn {
+    border: none;
+    padding: 0 10px;
+    margin: 0 2px;
+    border-radius: 12px;
+    font-size: 22px;
+    cursor: pointer;
+    color: #333;
+    background-color: transparent;
+    flex: 0 0 auto;
+    width: auto;
+    min-width: 0;
+    box-sizing: content-box;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    transition: transform 0.2s, background 0.2s, color 0.2s;
+}
 
-.news-item { border-radius: 12px; background-color: #fff; box-shadow: 0 2px 8px rgba(0,0,0,0.08); position: relative; overflow: hidden; transition: box-shadow 0.2s; }
-.news-item:hover { box-shadow: 0 4px 15px rgba(0,0,0,0.2); }
+.category-btn:hover { 
+    transform: scale(1.05); 
+    background-color: #aaa; 
+    color: white; 
+}
 
-.news-item img { width: 100%; height: calc(100% - 170px); object-fit: cover; display: block; margin: 0; transition: transform 0.3s ease; }
-.news-item:hover img { transform: scale(1.1); }
+.news-output { 
+    margin-top: 20px; 
+    padding: 20px; 
+    box-sizing: border-box; 
+    width: 100%; 
+}
 
-.news-item h2, .news-item h4 { margin: 0; padding: 5px 10px; transition: color 0.2s; color: #333; }
-.news-item:hover h2, .news-item:hover h4 { color: inherit; }
+.news-grid { 
+    display: grid; 
+    grid-template-columns: repeat(3, 1fr); 
+    gap: 20px; 
+}
 
-.news-item p { margin: 0; padding: 0 10px 10px 10px; font-size: 14px; color: #555; line-height: 1.5; }
+.news-item {
+    border-radius: 12px;
+    background-color: #fff;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+    position: relative;
+    overflow: hidden;
+    transition: box-shadow 0.2s;
+}
 
-.main-news { grid-column: span 3; height: 400px; position: relative;}
-.main-news img { width: 100%; height: calc(100% - 120px); display: block; margin: 0; transition: transform 0.3s ease; }
-.main-news:hover img { transform: scale(1.1); }
+.news-item:hover { 
+    box-shadow: 0 4px 15px rgba(0,0,0,0.2); 
+}
 
-.category-label { position: absolute; top: 10px; left: 10px; padding: 4px 8px; border-radius: 6px; color: white; font-size: 12px; font-weight: bold; text-transform: uppercase; z-index: 10; }
+.img-container { 
+    width: 100%; 
+    height: 200px; 
+    overflow: hidden; 
+}
+
+.img-container img { 
+    width: 100%; 
+    height: 100%; 
+    object-fit: cover; 
+    transition: transform 0.5s ease; 
+}
+
+.news-item:hover .img-container img { 
+    transform: scale(1.1); 
+}
+
+.news-item h2, 
+.news-item h4 { 
+    margin: 0; 
+    padding: 5px 10px; 
+    transition: color 0.2s; 
+    color: #333; 
+}
+
+.news-item:hover h2, 
+.news-item:hover h4 { 
+    color: inherit; 
+}
+
+.news-item p { 
+    margin: 0; 
+    padding: 0 10px 10px 10px; 
+    font-size: 14px; 
+    color: #555; 
+    line-height: 1.5; 
+}
+
+/* --- כתבה גדולה --- */
+.main-news {
+    grid-column: span 3;
+    height: 350px;
+    position: relative;
+    margin-bottom: 30px;
+    overflow: hidden;
+    border-radius: 12px;
+}
+
+.main-news .img-container {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+}
+
+.main-news .img-container img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    transition: transform 0.5s ease;
+}
+
+.main-news:hover .img-container img {
+    transform: scale(1.1);
+}
+
+/* Overlay עבור כותרת ותקציר */
+.main-news .overlay {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    padding: 20px;
+    background: linear-gradient(to top, rgba(0,0,0,0.7), rgba(0,0,0,0));
+    color: white;
+    box-sizing: border-box;
+}
+
+.main-news .overlay h2 {
+    font-size: 35px;
+    font-weight: 1600;
+    margin: 0 0 10px 0;
+}
+
+.main-news .overlay p {
+    font-size: 16px;
+    margin: 0;
+}
+
+.main-news .overlay h2,
+.main-news .overlay p {
+    color: white;
+}
+
+.main-news:hover .overlay h2,
+.main-news:hover .overlay p {
+    color: inherit;
+}
+
+/* --- תווית קטגוריה --- */
+.category-label {
+    position: absolute;
+    top: 10px;
+    left: 10px;
+    padding: 4px 8px;
+    border-radius: 6px;
+    color: white;
+    font-size: 12px;
+    font-weight: bold;
+    text-transform: uppercase;
+    z-index: 10;
+}
+
+/* --- תאריך וקו מפריד --- */
+.news-footer {
+    border-top: 1px solid rgba(0, 0, 0, 0.1);
+    margin-top: 8px;
+    padding-top: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    font-size: 12px;
+    color: #777;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+}
+
+.news-footer img {
+    width: 14px;
+    height: 14px;
+    margin-right: 6px;
+    opacity: 0.7;
+}
+
+/* תאריך בכתבה הגדולה */
+.main-news .news-footer {
+    border-top: none;
+    box-shadow: none;
+    padding-top: 6px;
+    font-size: 14px;
+    color: #ddd;
+    justify-content: flex-start;
+}
+
+.main-news .news-footer img {
+    width: 16px;
+    height: 16px;
+    margin-right: 6px;
+    opacity: 0.85;
+}
 
 /* Hover colors by category */
 .news-item:hover .category-label[data-category="Politics"] ~ h2,
@@ -118,11 +314,21 @@ css = """
 .news-item:hover .category-label[data-category="World"] ~ h2,
 .news-item:hover .category-label[data-category="World"] ~ h4 { color: #AAAAAA; }
 
-@media (max-width: 1024px) { .news-grid { grid-template-columns: repeat(2, 1fr); } }
-@media (max-width: 768px) { .news-grid { grid-template-columns: 1fr; } .category-btn { padding: 2px 6px; font-size: 10px; margin: 0 2px; } .news-item img { height: 140px; } }
+@media (max-width: 1024px) {
+    .news-grid { grid-template-columns: repeat(2, 1fr); }
+}
+
+@media (max-width: 768px) {
+    .news-grid { grid-template-columns: 1fr; }
+    .category-btn { padding: 2px 6px; font-size: 10px; margin: 0 2px; }
+    .img-container { height: 140px; }
+    .main-news { height: 250px; }
+}
+
 """
 
-# --- HTML generator ---
+
+# --- HTML generator מעודכן ---
 def get_news_html(category):
     items = news_by_category.get(category, [])
     if not items:
@@ -131,16 +337,28 @@ def get_news_html(category):
     html = ""
     main = items[0]
     cat_color = CATEGORY_COLORS.get(main.category, "#333")
+    clock_icon = "https://img.icons8.com/ios-filled/50/ffffff/clock.png"  # לכתבה הגדולה
+    small_clock_icon = "https://img.icons8.com/ios-filled/50/777777/clock.png"  # לשאר הכתבות
 
+    # --- כתבה גדולה ---
     html += f"<div class='news-item main-news'>"
     if getattr(main, "image_url", None):
         link = getattr(main, "link", "#")
         html += f"""
-        <div class='category-label' data-category='{main.category}' style='background-color:{cat_color};'>{main.category}</div>
-        <a href='{link}' target='_blank'><img src='{main.image_url}'/></a>
+        <div class='img-container'><a href='{link}' target='_blank'><img src='{main.image_url}'/></a></div>
+        <div class='overlay'>
+            <div class='category-label' data-category='{main.category}' style='background-color:{cat_color};'>{main.category}</div>
+            <h2>{main.title}</h2>
+            <p>{main.description}</p>
+            <div class='news-footer'>
+                <img src='{clock_icon}' alt='clock'/>
+                <span>{main.published_at}</span>
+            </div>
+        </div>
         """
-    html += f"<h2>{main.title}</h2><p>{main.description}</p></div>"
+    html += "</div>"
 
+    # --- שאר הכתבות ---
     html += "<div class='news-grid'>"
     for item in items[1:]:
         item_cat = getattr(item, "category", "World")
@@ -150,12 +368,21 @@ def get_news_html(category):
             link = getattr(item, "link", "#")
             html += f"""
             <div class='category-label' data-category='{item_cat}' style='background-color:{cat_color};'>{item_cat}</div>
-            <a href='{link}' target='_blank'><img src='{item.image_url}'/></a>
+            <div class='img-container'><a href='{link}' target='_blank'><img src='{item.image_url}'/></a></div>
             """
-        html += f"<h4>{item.title}</h4><p>{item.description}</p></div>"
+        html += f"""
+        <h4>{item.title}</h4>
+        <p>{item.description}</p>
+        <div class='news-footer'>
+            <img src='{small_clock_icon}' alt='clock'/>
+            <span>{item.published_at}</span>
+        </div>
+        </div>
+        """
     html += "</div>"
 
     return html
+
 
 # --- Gradio UI ---
 with gr.Blocks(css=css) as demo:
@@ -165,6 +392,7 @@ with gr.Blocks(css=css) as demo:
         for cat in CATEGORIES:
             btn = gr.Button(value=cat[:6], elem_classes="category-btn", elem_id=cat)
             category_buttons.append((btn, cat))
+            
 
     news_output = gr.HTML(elem_classes="news-output")
 

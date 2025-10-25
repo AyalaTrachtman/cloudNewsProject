@@ -26,7 +26,8 @@ def on_snapshot(col_snapshot, changes, read_time):
                 'title': doc.get('title'),
                 'description': doc.get('description'),
                 'image_url': doc.get('image_url'),
-                'tags': doc.get('tags', [])
+                'tags': doc.get('tags', []),
+                'published_at': doc.get('published_at', "Unknown date") 
             }
 
             topic = doc.get('classification', 'World') or 'World'

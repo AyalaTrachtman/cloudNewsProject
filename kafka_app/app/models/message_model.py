@@ -13,6 +13,8 @@ class Message:
     image_url: Optional[str] = None
     classification: Optional[str] = None
     entities: Optional[List[str]] = None
+    published_at: Optional[str] = None 
+
 
     def to_json(self) -> str:
         """ממיר את האובייקט ל־JSON כדי לשלוח ל־Kafka"""
