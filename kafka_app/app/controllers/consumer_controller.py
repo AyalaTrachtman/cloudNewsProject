@@ -15,9 +15,9 @@ KAFKA_BROKER = "localhost:9092"
 consumer = KafkaConsumer(
     *CATEGORIES,  # מאזין לכל הטופיקים
     bootstrap_servers=[KAFKA_BROKER],
-    auto_offset_reset='earliest',       # מאזין רק להודעות חדשות
-    enable_auto_commit=True,          # שומר את המיקום האחרון שקרא
-    group_id='news_consumer_group',   # מזהה קבוצה ייחודי לצרכן
+    auto_offset_reset='earliest',  # מאזין רק להודעות חדשות
+    enable_auto_commit=True,       # שומר את המיקום האחרון שקרא
+    group_id='news_consumer_group',  # מזהה קבוצה ייחודי לצרכן
     value_deserializer=lambda m: json.loads(m.decode('utf-8'))
 )
 
@@ -38,12 +38,16 @@ def consume_messages():
         # קביעת קטגוריה מתוך ה-topic
         topic_name = message.topic
         category = topic_name if topic_name in news_queues else data.get("classification", "World")
-
         if category not in news_queues:
             category = "World"
 
         news_queues[category].put(news_item)
         print(f"[Consumer] 📰 New article: {news_item.title} (Topic: {topic_name})")
+def clear_news_queues():
+    for q in news_queues.values():
+        while not q.empty():
+            q.get()
+    print("[Consumer] 🗑 All news queues cleared")
 
 def start_consumer():
     """מפעיל את הצרכן ברקע (thread)"""
@@ -52,10 +56,6 @@ def start_consumer():
     print("[Consumer] 🚀 Consumer started and waiting for new messages...")
 
 if __name__ == "__main__":
+    clear_news_queues()
     start_consumer()
-    try:
-        while True:
-            pass  # נשאר במצב האזנה תמידי
-    except KeyboardInterrupt:
-        print("\n[Consumer] 🛑 Stopped by user.")
- 
+  

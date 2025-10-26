@@ -6,6 +6,12 @@ from transformers import pipeline
 import numpy as np
 import cloudinary
 import cloudinary.uploader
+import urllib.parse
+import requests
+from io import BytesIO
+from .firebase_db import news_exists
+
+
 
 API_KEY = "cf0598a600744dbb8092ef66ea26ae2b"
 BASE_URL = "https://newsapi.org/v2/top-headlines"
@@ -53,7 +59,7 @@ def classify_article(content):
         return "World"
     
 # בדיקת סיווג ישירה
-if _name_ == "_main_":
+if _name_ == "main":
     test_text = "The government announced new economic reforms and tax cuts today."
     print("Testing classification on sample text:")
     print(classify_article(test_text))
@@ -67,23 +73,19 @@ def summarize_article(content, max_chars=200):
 def safe_float(x):
     return float(x) if isinstance(x, (np.float32, np.float64)) else x
 
-def fetch_image_from_google(query):
-    try:
-        params = {
-            "q": query,
-            "tbm": "isch",
-            "ijn": "0",
-            "api_key": SERP_API_KEY
-        }
-        response = requests.get("https://serpapi.com/search.json", params=params)
-        data = response.json()
-        images = data.get("images_results", [])
-        if images:
-            return images[0].get("original")
-        return DEFAULT_IMAGE_URL
-    except Exception as e:
-        print("Error fetching image:", e)
-        return DEFAULT_IMAGE_URL
+def generate_image_bytes(prompt: str) -> BytesIO:
+   
+    # Encode פרומפט ל-URL
+    encoded_prompt = urllib.parse.quote(prompt)
+    image_url = f"https://image.pollinations.ai/prompt/{encoded_prompt}"
+    
+    # מורידה את התמונה כ-Bytes
+    response = requests.get(image_url)
+    response.raise_for_status()
+    image_bytes = BytesIO(response.content)
+    
+    return image_bytes
+
 
 def fetch_and_save_news(country="us", category=None):
     print("fetch_and_save_news התחילה")
@@ -109,14 +111,20 @@ def fetch_and_save_news(country="us", category=None):
         if not content:
             continue
 
-        news_id = str(uuid.uuid4())
         title = article.get("title", "")
         source = article.get("source", {}).get("name", "")
         url = article.get("url", "")
-        image_url = article.get("urlToImage") or fetch_image_from_google(title)
-        cloudinary_url = upload_to_cloudinary(image_url, public_id=news_id)
         published_at = article.get("publishedAt")  
 
+        # בדיקה אם הכתבה כבר קיימת
+        if news_exists(url):
+            print(f"⚠ Article already exists: {url}")
+            continue
+
+        # אם לא קיימת – ממשיכים ושומרים
+        news_id = str(uuid.uuid4())
+        image_url = article.get("urlToImage") or generate_image_bytes(title)
+        cloudinary_url = upload_to_cloudinary(image_url, public_id=news_id)
 
         analysis = analyze_article(title, content)
         entities = analysis.get("entities", [])
@@ -149,5 +157,6 @@ def fetch_and_save_news(country="us", category=None):
         "articles": saved_articles,
         "ids": saved_ids
     }
-if __name__ == "__main__":
+    
+if __name__ == "_main_":
     fetch_and_save_news(country="us")

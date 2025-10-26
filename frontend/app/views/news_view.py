@@ -6,6 +6,7 @@ import os
 import queue
 import json
 from kafka import KafkaConsumer
+from datetime import datetime
 
 # --- Path setup ---
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '../../..'))
@@ -62,15 +63,36 @@ def start_consumer():
         print(f"[Consumer] Received: {news_item.title} (Topic: {message.topic}, Category: {category})")
 
 def update_news():
-    while True:
-        for cat in CATEGORIES:
-            while not news_queues[cat].empty():
-                news_item = news_queues[cat].get()
+ seen_urls = set()  # נשמור אילו כתבות כבר נוספו
+ while True:
+    for cat in CATEGORIES:
+        while not news_queues[cat].empty():
+            news_item = news_queues[cat].get()
+            # בדיקה אם כבר ראינו את הכתבה ולוודא שיש לה URL תקין
+            if getattr(news_item, "link", None) and news_item.link not in seen_urls:
                 news_by_category[cat].append(news_item)
-        time.sleep(0.5)
+                seen_urls.add(news_item.link)
+
+                # מיון לפי תאריך – הכי חדש ראשון
+                news_by_category[cat].sort(
+                    key=lambda x: datetime.fromisoformat(
+                        getattr(x, "published_at", "1970-01-01").replace("Z", "+00:00")
+                    ),
+                    reverse=True
+                )
+    time.sleep(0.5)
+
 
 threading.Thread(target=start_consumer, daemon=True).start()
 threading.Thread(target=update_news, daemon=True).start()
+# --- Format date helper ---
+def format_date(date_str):
+    """מחזיר רק את התאריך בפורמט YYYY-MM-DD"""
+    try:
+        dt = datetime.fromisoformat(date_str.replace("Z", "+00:00"))
+        return dt.strftime("%Y-%m-%d")
+    except Exception:
+        return date_str.split("T")[0]  # fallback
 
 # --- CSS מעודכן ---
 css = """
@@ -85,7 +107,7 @@ css = """
     top: 0;
     left: 0;
     width: 100%;
-    background-color: rgba(255, 255, 255, 0.20);
+    background-color: rgba(255, 255, 255, 0.5);
     z-index: 1000;
     box-shadow: 0 2px 8px rgba(0,0,0,0.1);
 }
@@ -135,6 +157,8 @@ css = """
 }
 
 .news-item {
+    display: flex;             /* מאפשר סידור תוכן מלמעלה למטה */
+    flex-direction: column;    /* תוכן מהכותרת עד התאריך */
     border-radius: 12px;
     background-color: #fff;
     box-shadow: 0 2px 8px rgba(0,0,0,0.08);
@@ -142,6 +166,7 @@ css = """
     overflow: hidden;
     transition: box-shadow 0.2s;
 }
+
 
 .news-item:hover { 
     box-shadow: 0 4px 15px rgba(0,0,0,0.2); 
@@ -257,44 +282,96 @@ css = """
     font-weight: bold;
     text-transform: uppercase;
     z-index: 10;
+} 
+/* --- תווית קטגוריה בכתבה הגדולה --- */
+.main-news .category-label {
+    top: 2px;           /* מזיז את התווית יותר למעלה */
+    left: 25px;
+    padding: 4px 8px;
+    border-radius: 6px;
+    color: white;
+    font-size: 12px;
+    font-weight: bold;
+    text-transform: uppercase;
+    z-index: 10;
 }
 
-/* --- תאריך וקו מפריד --- */
-.news-footer {
-    border-top: 1px solid rgba(0, 0, 0, 0.1);
-    margin-top: 8px;
-    padding-top: 4px;
+
+/* --- תאריך בתחתית הכתבה הקטנה --- */
+.news-item:not(.main-news) {
+    display: flex;
+    flex-direction: column;    /* תוכן מהכותרת עד התאריך */
+    justify-content: space-between; /* דוחף את התאריך למטה */
+    height: 100%;             /* חשוב כדי שהדחיפה תעבוד */
+}
+
+.news-item:not(.main-news) .news-footer {
     display: flex;
     align-items: center;
     justify-content: flex-start;
     font-size: 12px;
     color: #777;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    margin: 0 10px 5px 10px;  /* שוליים עליונים ותחתי + שמאל וימין */
+    padding: 2px 0 0 0;       /* מרים קצת את השורה למעלה */
+    box-shadow: none;
+    flex-wrap: nowrap;
 }
 
-.news-footer img {
+/* פס דק כמעט לאורך כל הכתבה, עם רווח קטן מכל צד */
+.news-item:not(.main-news) .news-footer span {
+    display: inline-block;
+    border-top: 1px solid rgba(0, 0, 0, 0.10); /* פס כמעט בלתי נראה */
+    width: calc(100% - 20px);                  /* פס כמעט לכל הרוחב, 10px מכל צד */
+    margin: 0 5px 0 10px;                     /* רווחים מכל צד */
+    padding-top: 0;                             /* אין רווח מעל */
+}
+
+/* אייקון בתאריך */
+.news-item:not(.main-news) .news-footer img {
     width: 14px;
     height: 14px;
-    margin-right: 6px;
+    margin-right: 3px;
     opacity: 0.7;
+    flex-shrink: 0;
 }
 
-/* תאריך בכתבה הגדולה */
+
+/* --- תאריך בכתבה הגדולה --- */
 .main-news .news-footer {
     border-top: none;
     box-shadow: none;
     padding-top: 6px;
     font-size: 14px;
-    color: #ddd;
+    color: #777 !important;      /* צבע אפור */
     justify-content: flex-start;
+    display: flex;
+    align-items: center;
+    flex-wrap: nowrap;            /* שורה אחת */
 }
 
+/* אייקון בתאריך בכתבה הגדולה */
 .main-news .news-footer img {
     width: 16px;
     height: 16px;
     margin-right: 6px;
-    opacity: 0.85;
+    opacity: 1;
+    filter: none;                 /* לא להפוך ללבן */
+    flex-shrink: 0;
 }
+
+/* תאריך עצמו */
+.news-footer span {
+    color: inherit;               /* לוקח את צבע ההורה */
+    margin-left: 4px;             /* רווח בין האייקון לתאריך */
+    white-space: nowrap;          /* כדי שלא ירד שורה */
+}
+/* תאריך עצמו בכתבה הגדולה */
+.main-news .news-footer span {
+    color: white !important;  /* FORCE צבע לבן */
+    margin-left: 4px;
+    white-space: nowrap;
+}
+
 
 /* Hover colors by category */
 .news-item:hover .category-label[data-category="Politics"] ~ h2,
@@ -352,7 +429,7 @@ def get_news_html(category):
             <p>{main.description}</p>
             <div class='news-footer'>
                 <img src='{clock_icon}' alt='clock'/>
-                <span>{main.published_at}</span>
+                <span>{format_date(getattr(main, "published_at", "Unknown date"))}</span>
             </div>
         </div>
         """
@@ -375,7 +452,8 @@ def get_news_html(category):
         <p>{item.description}</p>
         <div class='news-footer'>
             <img src='{small_clock_icon}' alt='clock'/>
-            <span>{item.published_at}</span>
+             <span>{format_date(getattr(main, "published_at", "Unknown date"))}</span>
+
         </div>
         </div>
         """

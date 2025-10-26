@@ -4,7 +4,7 @@ from firebase_admin import credentials, firestore
 import numpy as np
 
 # נתיב לקובץ credentials יחסית לתיקייה BE
-cred_path = os.path.join(os.path.dirname(os.path.dirname(_file_)), "firebase_credentials.json")
+cred_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "firebase_credentials.json")
 
 # אתחול Firebase רק פעם אחת
 if not firebase_admin._apps:
@@ -70,3 +70,7 @@ def get_all_news():
         news_item["id"] = doc.id  # מוסיפים את מזהה המסמך
         all_news.append(news_item)
     return all_news
+def news_exists(url):
+    db = firestore.client()
+    docs = db.collection("news").where("url", "==", url).stream()
+    return any(docs)
