@@ -1,5 +1,5 @@
 import requests
-from .firebase_db import save_news
+from .firebase_db import save_news, get_news_by_url
 from .huggingface_analyzer import analyze_article
 import uuid
 from transformers import pipeline
@@ -10,13 +10,11 @@ BASE_URL = "https://newsapi.org/v2/top-headlines"
 DEFAULT_IMAGE_URL = "https://example.com/default-image.jpg"
 SERP_API_KEY = "your_serpapi_key"
 
-# נושאים אפשריים
 TOPICS = [
     "Politics", "Finance", "Science", "Culture",
     "Sport", "Technology", "Health", "World"
 ]
 
-# מודל Hugging Face מתאים לסיווג נושאים (Zero-shot)
 classifier = pipeline(
     "zero-shot-classification",
     model="facebook/bart-large-mnli"
@@ -27,18 +25,10 @@ def classify_article(content):
         return "World"
     try:
         result = classifier(content[:512], TOPICS)
-        label = result["labels"][0]
-        return label
+        return result["labels"][0]
     except Exception as e:
         print("Classification error:", e)
         return "World"
-    
-# בדיקת סיווג ישירה
-if __name__ == "__main__":
-    test_text = "The government announced new economic reforms and tax cuts today."
-    print("Testing classification on sample text:")
-    print(classify_article(test_text))
-
 
 def summarize_article(content, max_chars=200):
     if not content:
@@ -78,6 +68,7 @@ def fetch_and_save_news(country="us", category=None):
     response = requests.get(BASE_URL, params=params)
     print("Response status:", response.status_code)
     print("Response text:", response.text[:500])
+
     if response.status_code != 200:
         return {"error": f"Failed to fetch news, status: {response.status_code}"}
 
@@ -90,12 +81,19 @@ def fetch_and_save_news(country="us", category=None):
         if not content:
             continue
 
-        news_id = str(uuid.uuid4())
         title = article.get("title", "")
         source = article.get("source", {}).get("name", "")
         url = article.get("url", "")
-        image_url = article.get("urlToImage") or fetch_image_from_google(title)
+        if not url:
+            continue
 
+        # בדיקה אם כתבה כבר קיימת
+        existing = get_news_by_url(url)
+        if existing:
+            print(f"Skipping existing article: {url}")
+            continue
+
+        image_url = article.get("urlToImage") or fetch_image_from_google(title)
         analysis = analyze_article(title, content)
         entities = analysis.get("entities", [])
         for e in entities:
@@ -104,6 +102,7 @@ def fetch_and_save_news(country="us", category=None):
 
         classification = classify_article(content)
         summary = summarize_article(content)
+        news_id = str(uuid.uuid4())
 
         news_data = {
             "id": news_id,
@@ -122,7 +121,17 @@ def fetch_and_save_news(country="us", category=None):
         saved_ids.append(news_id)
 
     return {
-        "message": f"Saved {len(saved_articles)} articles",
+        "message": f"Saved {len(saved_articles)} new articles",
         "articles": saved_articles,
         "ids": saved_ids
     }
+
+# בדיקה מקומית
+if __name__ == "__main__":
+    test_text = "The government announced new economic reforms and tax cuts today."
+    print("Testing classification on sample text:")
+    print(classify_article(test_text))
+
+if __name__ == "__main__":
+    fetch_and_save_news()
+

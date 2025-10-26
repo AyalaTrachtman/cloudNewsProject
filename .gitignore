@@ -7,3 +7,5 @@ BE/firebase_credentials.json
 kafka/app/controllers/FireBaseKey.json
 
 FireBaseKey.json
+
+.env
