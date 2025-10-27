@@ -10,6 +10,8 @@ import urllib.parse
 import requests
 from io import BytesIO
 from .firebase_db import news_exists
+import cloudinary.uploader
+from .firebase_db import get_all_news, update_news
 
 
 
@@ -38,13 +40,51 @@ classifier = pipeline(
     model="facebook/bart-large-mnli"
 )
 
-def upload_to_cloudinary(image_url, public_id=None):
+def upload_to_cloudinary(image_input, public_id=None):
+    """
+    מקבלת URL או BytesIO ומעלה ל-Cloudinary.
+    משתמשת ב-fallback רק אם GET נכשל.
+    """
     try:
-        result = cloudinary.uploader.upload(image_url, public_id=public_id)
-        return result['secure_url']  # זה הקישור של התמונה ב-Cloudinary
+        # אם זה URL
+        if isinstance(image_input, str):
+            try:
+                response = requests.get(image_input, timeout=10)
+                response.raise_for_status()
+                image_bytes = BytesIO(response.content)
+                image_bytes.seek(0)
+            except Exception as e:
+                print("URL לא זמין או GET נכשל, נשתמש ב-fallback:", e)
+                image_bytes = generate_image_bytes(public_id or "fallback")
+                image_bytes.seek(0)
+            
+            return cloudinary.uploader.upload(
+                image_bytes,
+                public_id=public_id,
+                resource_type="image",
+                timeout=15
+            )["secure_url"]
+
+        # אם זה BytesIO
+        if isinstance(image_input, BytesIO):
+            image_input.seek(0)
+            return cloudinary.uploader.upload(
+                image_input,
+                public_id=public_id,
+                resource_type="image",
+                timeout=15
+            )["secure_url"]
+
     except Exception as e:
-        print("Cloudinary upload error:", e)
-        return image_url  # במקרה של כשל, נשאר עם הקישור המקורי
+        print("Cloudinary upload failed, משתמשים ב-fallback:", e)
+        fallback = generate_image_bytes(public_id or "fallback")
+        fallback.seek(0)
+        return cloudinary.uploader.upload(
+            fallback,
+            public_id=public_id,
+            resource_type="image",
+            timeout=15
+        )["secure_url"]
 
 
 def classify_article(content):
@@ -59,10 +99,10 @@ def classify_article(content):
         return "World"
     
 # בדיקת סיווג ישירה
-if _name_ == "main":
-    test_text = "The government announced new economic reforms and tax cuts today."
-    print("Testing classification on sample text:")
-    print(classify_article(test_text))
+#if _name_ == "main":
+    #test_text = "The government announced new economic reforms and tax cuts today."
+   # print("Testing classification on sample text:")
+   # print(classify_article(test_text))
 
 
 def summarize_article(content, max_chars=200):
@@ -78,6 +118,7 @@ def generate_image_bytes(prompt: str) -> BytesIO:
     # Encode פרומפט ל-URL
     encoded_prompt = urllib.parse.quote(prompt)
     image_url = f"https://image.pollinations.ai/prompt/{encoded_prompt}"
+    
     
     # מורידה את התמונה כ-Bytes
     response = requests.get(image_url)
@@ -125,6 +166,7 @@ def fetch_and_save_news(country="us", category=None):
         news_id = str(uuid.uuid4())
         image_url = article.get("urlToImage") or generate_image_bytes(title)
         cloudinary_url = upload_to_cloudinary(image_url, public_id=news_id)
+        print(f"Uploaded to Cloudinary: {cloudinary_url}")  # מדפיס את ה-URL מה-Cloudinary
 
         analysis = analyze_article(title, content)
         entities = analysis.get("entities", [])
@@ -157,6 +199,54 @@ def fetch_and_save_news(country="us", category=None):
         "articles": saved_articles,
         "ids": saved_ids
     }
-    
-if __name__ == "_main_":
+
+def upload_missing_or_fallback_images(max_retries=3):
+    articles = get_all_news()
+    for article in articles:
+        news_id = article["id"]
+        original_url = article.get("original_image_url")
+        current_url = article.get("image_url")
+
+        # אם אין URL מקורי – נשאיר אותו כמו שהוא
+        if not original_url:
+            continue
+
+        # נבדוק אם התמונה הנוכחית היא fallback/ציור (שונה מהמקור)
+        if current_url.startswith("https://res.cloudinary.com/") and current_url != original_url:
+            # ננסה שוב להעלות את המקור
+            success = False
+            for attempt in range(max_retries):
+                try:
+                    response = requests.get(original_url, timeout=10)
+                    response.raise_for_status()
+                    image_bytes = BytesIO(response.content)
+                    image_bytes.seek(0)
+                    new_url = upload_to_cloudinary(image_bytes, public_id=news_id)
+                    update_news(news_id, {"image_url": new_url})
+                    print(f"Updated Cloudinary with original image for: {article['title']}")
+                    success = True
+                    break
+                except Exception as e:
+                    print(f"Attempt {attempt+1} failed for {article['title']}: {e}")
+
+            if not success:
+                # fallback: תמונה אמיתית לפי entities
+                entities_text = " ".join([e["name"] for e in article.get("entities", [])])
+                if entities_text:
+                    try:
+                        search_url = f"https://source.unsplash.com/800x600/?{urllib.parse.quote(entities_text)}"
+                        response = requests.get(search_url)
+                        response.raise_for_status()
+                        image_bytes = BytesIO(response.content)
+                        image_bytes.seek(0)
+                        new_url = upload_to_cloudinary(image_bytes, public_id=news_id)
+                        update_news(news_id, {"image_url": new_url})
+                        print(f"Updated Cloudinary fallback image for: {article['title']}")
+                    except Exception as e:
+                        print(f"Fallback search failed for {article['title']}: {e}, keeping original Cloudinary URL")
+
+if __name__ == "__main__":
+
+    upload_missing_or_fallback_images()
     fetch_and_save_news(country="us")
+    
