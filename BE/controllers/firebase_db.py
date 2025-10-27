@@ -15,8 +15,7 @@ if not firebase_admin._apps:
 db = firestore.client()
 
 
-# ===== פונקציות עזר =====
-
+# פונקציה לניקוי נתונים לפני שמירה ל-Firestore
 def clean_for_firestore(data):
     """
     ממירה טיפוסים לא נתמכים (כמו np.float32, np.int64 וכו') לטיפוסים רגילים של Python.
@@ -30,28 +29,36 @@ def clean_for_firestore(data):
     else:
         return data
 
-
-# ===== פעולות על חדשות =====
-
+# CREATE / UPDATE
 def save_news(news_id, news_data):
     news_data = clean_for_firestore(news_data)
-    db.collection("news").document(str(news_id)).set(news_data)
+    doc_ref = db.collection("news").document(str(news_id))
+    doc_ref.set(news_data)
 
 
+# READ
 def get_news(news_id):
-    doc = db.collection("news").document(str(news_id)).get()
-    return doc.to_dict() if doc.exists else None
+    doc_ref = db.collection("news").document(str(news_id))
+    doc = doc_ref.get()
+    if doc.exists:
+        return doc.to_dict()
+    return None
 
 
+# UPDATE בלבד
 def update_news(news_id, news_data):
     news_data = clean_for_firestore(news_data)
-    db.collection("news").document(str(news_id)).update(news_data)
+    doc_ref = db.collection("news").document(str(news_id))
+    doc_ref.update(news_data)
 
 
+# DELETE
 def delete_news(news_id):
-    db.collection("news").document(str(news_id)).delete()
+    doc_ref = db.collection("news").document(str(news_id))
+    doc_ref.delete()
 
 
+# READ ALL
 def get_all_news():
     """
     מחזיר רשימה של כל החדשות מ-Firestore.
@@ -60,15 +67,10 @@ def get_all_news():
     all_news = []
     for doc in news_collection:
         news_item = doc.to_dict()
-        news_item["id"] = doc.id
+        news_item["id"] = doc.id  # מוסיפים את מזהה המסמך
         all_news.append(news_item)
     return all_news
-
-
-def get_news_by_url(url):
-    """
-    מחפש כתבה לפי השדה 'url' כדי למנוע כפילויות.
-    מחזיר רשימת מסמכים תואמים.
-    """
-    results = db.collection("news").where("url", "==", url).stream()
-    return [r.to_dict() for r in results]
+def news_exists(url):
+    db = firestore.client()
+    docs = db.collection("news").where("url", "==", url).stream()
+    return any(docs)
