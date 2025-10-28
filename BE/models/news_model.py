@@ -10,3 +10,4 @@ class News(BaseModel):
     image_url: Optional[str]  # לינק לתמונה
     classification: Optional[str]  # תוצאה של Hugging Face Zero-shot
     entities: Optional[List[str]] = []  # רשימת שמות, מקומות, וכו'
+    published_at: Optional[str]  # תאריך פרסום במחרוזת

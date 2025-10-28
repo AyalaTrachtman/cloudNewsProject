@@ -28,7 +28,8 @@ def start_consumer():
                 title=data['title'],
                 description=data['description'],
                 image_url=data['image_url'],
-                tags=data.get('tags', [])
+                tags=data.get('tags', []),
+                published_at=data.get('published_at', "Unknown date")
             )
             news_queue.put(news_item)
             print(f"[Consumer] Received: {news_item.title}")
