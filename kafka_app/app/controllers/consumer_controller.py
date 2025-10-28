@@ -10,46 +10,63 @@ CATEGORIES = ["Politics", "Finance", "Science", "Culture", "Sport", "Technology"
 news_queues = {cat: queue.Queue() for cat in CATEGORIES}
 
 KAFKA_BROKER = "localhost:9092"
-TOPIC = "World"  # או כל טופיק שתרצי
+TOPIC = "World"  # אפשר לשנות לפי הצורך
 
 consumer = KafkaConsumer(
     TOPIC,
     bootstrap_servers=[KAFKA_BROKER],
-    auto_offset_reset='earliest',     # קבלת הודעות מההתחלה
+    auto_offset_reset='earliest',
     enable_auto_commit=False,
     group_id='news_consumer_test',
     value_deserializer=lambda m: json.loads(m.decode('utf-8'))
 )
 
 
-def start_consumer():
+def start_consumer(on_new_news=None):
+    """
+    מאזין ל-Kafka ומעביר כל כתבה חדשה לפונקציית callback (אם הוגדרה),
+    או פשוט שומר אותה בתור של הקטגוריה.
+    """
     print(f"[Consumer] Listening to topic '{TOPIC}'...")
+
     for message in consumer:
         data = message.value
+        print(f"[Consumer] Raw message received: {data}")
 
-        # יצירת אובייקט כתבה
-        news_item = type("NewsItem", (), {})()
-        news_item.title = data.get("title", "")
-        news_item.description = data.get("content", "")
-        news_item.image_url = data.get("image_url", "")
+        news_id = data.get("id")  # מזהה הכתבה
+        title = data.get("title", "")
         classification = data.get("classification", "World")
 
-        # אם הקטגוריה קיימת ברשימה — שלחי לתור שלה
+        # יצירת אובייקט כתבה פשוט
+        news_item = type("NewsItem", (), {})()
+        news_item.id = news_id
+        news_item.title = title
+        news_item.description = data.get("content", "")
+        news_item.image_url = data.get("image_url", "")
+
+        # הוספה לתור לפי קטגוריה
         if classification in news_queues:
             news_queues[classification].put(news_item)
         else:
-            # אם קטגוריה לא מוכרת, הכניסי ל-World כברירת מחדל
             news_queues["World"].put(news_item)
 
-        print(f"[Consumer] Received: {news_item.title} (Category: {classification})")
+        print(f"[Consumer] Received: {title} (Category: {classification})")
+
+        # אם יש פונקציית callback (למשל מ-Gradio) — לקרוא לה
+        if on_new_news and news_id:
+            try:
+                on_new_news(news_id)
+                print(f"[Consumer] Triggered callback for news ID: {news_id}")
+            except Exception as e:
+                print(f"[Consumer] ⚠️ Error in callback: {e}")
 
 
 if __name__ == "__main__":
+    # מצב בדיקה: רק מדפיס הודעות
     t = threading.Thread(target=start_consumer, daemon=True)
     t.start()
 
     try:
-        while True:
-            pass
+        threading.Event().wait()
     except KeyboardInterrupt:
-        print("\n[Test] Stopped by user")
+        print("Stopped")
