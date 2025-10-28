@@ -5,14 +5,18 @@ import sys
 import os
 import queue
 import json
+<<<<<<< HEAD
 from kafka import KafkaConsumer
 from datetime import datetime
+=======
+>>>>>>> Aayla
 
 # --- Path setup ---
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '../../..'))
 if project_root not in sys.path:
     sys.path.append(project_root)
 
+<<<<<<< HEAD
 # --- Categories ---
 CATEGORIES = ["Politics", "Finance", "Science", "Culture", "Sport", "Technology", "Health", "World"]
 
@@ -72,6 +76,38 @@ def update_news():
             if getattr(news_item, "link", None) and news_item.link not in seen_urls:
                 news_by_category[cat].append(news_item)
                 seen_urls.add(news_item.link)
+=======
+# --- ייבוא הקונסומר החדש ---
+from cloudNewsProject.kafka_app.consumer_controller import start_consumer  # או הנתיב הנכון אצלך
+
+# --- Queue עולמית לעדכון חדשות ---
+news_queue = queue.Queue()
+
+# --- פונקציה שתופעל כשמגיעה כתבה חדשה ---
+def on_new_news_id(news_id):
+    print(f"[GRADIO] New news ID arrived: {news_id}")
+    # כאן אפשר לקרוא ל-Firebase לפי ה-ID ולרענן את התצוגה
+    # לדוגמה:
+    # news_data = firebase_get_news_by_id(news_id)
+    # news_queue.put(news_data)
+
+# --- הפעלת הצרכן ברקע ---
+threading.Thread(target=start_consumer, args=(on_new_news_id,), daemon=True).start()
+
+# --- שאר הקוד שלך נשאר בדיוק אותו דבר ---
+CATEGORIES = ["Politics", "Finance", "Science", "Culture", "Sport", "Technology", "Health", "World"]
+news_by_category = {cat: [] for cat in CATEGORIES}
+
+def update_news():
+    while True:
+        while not news_queue.empty():
+            news_item = news_queue.get()
+            category = getattr(news_item, "tags", ["World"])[0]
+            if category not in news_by_category:
+                news_by_category[category] = []
+            news_by_category[category].append(news_item)
+        time.sleep(0.5)
+>>>>>>> Aayla
 
                 # מיון לפי תאריך – הכי חדש ראשון
                 news_by_category[cat].sort(
@@ -94,6 +130,7 @@ def format_date(date_str):
     except Exception:
         return date_str.split("T")[0]  # fallback
 
+<<<<<<< HEAD
 # --- CSS מעודכן ---
 css = """
 .category-btn-container {
@@ -407,10 +444,14 @@ css = """
 
 # --- HTML generator מעודכן ---
 def get_news_html(category):
+=======
+def get_news_for_category(category):
+>>>>>>> Aayla
     items = news_by_category.get(category, [])
     if not items:
         return "<p>No news yet...</p>"
 
+<<<<<<< HEAD
     html = ""
     main = items[0]
     cat_color = CATEGORY_COLORS.get(main.category, "#333")
@@ -486,3 +527,16 @@ with gr.Blocks(css=css) as demo:
         btn.click(fn=lambda c=cat: on_category_click(c), inputs=[], outputs=[news_output])
 
 demo.launch(inbrowser=True)
+=======
+with gr.Blocks() as demo:
+    with gr.Row():
+        category_buttons = []
+        for cat in CATEGORIES:
+            btn = gr.Button(cat)
+            category_buttons.append(btn)
+        news_output = gr.Markdown()
+        for btn, cat in zip(category_buttons, CATEGORIES):
+            btn.click(fn=lambda c=cat: get_news_for_category(c), inputs=[], outputs=[news_output])
+
+demo.launch(inbrowser=True)
+>>>>>>> Aayla

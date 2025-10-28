@@ -68,6 +68,7 @@ def send_message_to_kafka(doc):
     print(f"[Producer] Sending to topic '{topic}' ({type(topic)})")
     producer.send(topic, msg)
     print(f"[Producer] Sent: {msg.title}")
+    producer.flush()
 
 def send_existing_documents():
     """שולח את כל המסמכים הקיימים במסד ל-Kafka"""
