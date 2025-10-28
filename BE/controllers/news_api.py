@@ -109,10 +109,10 @@ def fetch_and_save_news(country="us", category=None):
 
         news_id = str(uuid.uuid4())
 
-        # 🔹 שמירת התמונה המקורית מהכתבה
+        # 🔹 שומר את התמונה המקורית בלבד (מהכתבה)
         original_image_url = article.get("urlToImage") or DEFAULT_IMAGE_URL
 
-        # 🔹 העלאה ל-Cloudinary או fallback
+        # 🔹 רק image_url עובר דרך Cloudinary / fallback
         if "pollinations.ai" in original_image_url:
             cloud_url = original_image_url
         else:
@@ -140,8 +140,8 @@ def fetch_and_save_news(country="us", category=None):
             "summary": summary,
             "url": url,
             "source": article.get("source", {}).get("name", ""),
-            "image_url": cloud_url,             # Cloudinary או fallback
-            "original_image_url": original_image_url,  # מהכתבה, לא משתנה
+            "image_url": cloud_url,                # Cloudinary או fallback
+            "original_image_url": original_image_url,  # מהכתבה, תמיד מקורית
             "classification": classification,
             "entities": entities,
             "published_at": article.get("publishedAt")
@@ -185,7 +185,7 @@ def upload_missing_or_fallback_images(max_retries=3):
                 pass
 
         if not success:
-            entities_text = " ".join([e.get("word","") for e in article.get("entities", [])]) or "news"
+            entities_text = " ".join([e.get("word", "") for e in article.get("entities", [])]) or "news"
             try:
                 fallback = fetch_real_image_from_unsplash(entities_text)
                 url = upload_to_cloudinary(fallback, public_id=news_id)
