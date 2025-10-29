@@ -8,6 +8,7 @@ import cloudinary
 import cloudinary.uploader
 import urllib.parse
 from io import BytesIO
+from firebase_admin import firestore
 
 API_KEY = "cf0598a600744dbb8092ef66ea26ae2b"
 BASE_URL = "https://newsapi.org/v2/top-headlines"
@@ -109,10 +110,8 @@ def fetch_and_save_news(country="us", category=None):
 
         news_id = str(uuid.uuid4())
 
-        # 🔹 שומר את התמונה המקורית בלבד (מהכתבה)
         original_image_url = article.get("urlToImage") or DEFAULT_IMAGE_URL
 
-        # 🔹 רק image_url עובר דרך Cloudinary / fallback
         if "pollinations.ai" in original_image_url:
             cloud_url = original_image_url
         else:
@@ -140,8 +139,8 @@ def fetch_and_save_news(country="us", category=None):
             "summary": summary,
             "url": url,
             "source": article.get("source", {}).get("name", ""),
-            "image_url": cloud_url,                # Cloudinary או fallback
-            "original_image_url": original_image_url,  # מהכתבה, תמיד מקורית
+            "image_url": cloud_url,
+            "original_image_url": original_image_url,
             "classification": classification,
             "entities": entities,
             "published_at": article.get("publishedAt")
@@ -194,7 +193,11 @@ def upload_missing_or_fallback_images(max_retries=3):
             update_news(news_id, {"image_url": url})
 
 
+
+
+
 if __name__ == "__main__":
+    # הרץ את הפונקציה הזו כדי למחוק את השדה לחלוטין:
     fill_missing_original_image()
     upload_missing_or_fallback_images()
     fetch_and_save_news(country="us")
