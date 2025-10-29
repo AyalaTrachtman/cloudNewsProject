@@ -58,3 +58,22 @@ def fetch_news(country: str = "us", category: str = None):
 @app.get("/news")
 def read_all_news():
     return get_all_news()
+
+
+if _name_ == "_main_":
+    print("🔄 Starting continuous news fetching loop (press Ctrl+C to stop)...\n")
+
+    fill_missing_original_image()
+    upload_missing_or_fallback_images()
+
+    import time
+    INTERVAL = 300  # כל כמה שניות לבצע fetch חדש (כאן: כל 5 דקות)
+
+    try:
+        while True:
+            print(f"🕒 Fetching latest news at {time.strftime('%Y-%m-%d %H:%M:%S')}...")
+            fetch_and_save_news(country="us")
+            print("✅ Fetch completed, sleeping...\n")
+            time.sleep(INTERVAL)  # מחכה 5 דקות
+    except KeyboardInterrupt:
+        print("\n🛑 Stopped by user (Ctrl+C). Exiting gracefully.")
