@@ -8,6 +8,8 @@ import cloudinary
 import cloudinary.uploader
 import urllib.parse
 from io import BytesIO
+from .firebase_db import get_all_news, delete_news
+
 
 API_KEY = "cf0598a600744dbb8092ef66ea26ae2b"
 BASE_URL = "https://newsapi.org/v2/everything"
@@ -100,6 +102,14 @@ def fetch_and_save_news(category=None, country=None):
     saved_ids = []
 
     for article in data.get("articles", []):
+
+        source_name = article.get("source", {}).get("name", "")
+    
+    # דילוג על כתבות מ-Biztoc.com
+        if source_name.strip().lower() == "biztoc.com":
+            print(f"🚫 Skipping article from {source_name}")
+            continue
+
         content = article.get("description") or article.get("content")
         if not content:
             continue
@@ -151,5 +161,10 @@ def fetch_and_save_news(category=None, country=None):
     }
 
 
+
+
+
+
 if __name__ == "__main__":
     fetch_and_save_news()
+
