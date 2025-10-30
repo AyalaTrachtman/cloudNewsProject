@@ -106,7 +106,7 @@ def fetch_and_save_news(category=None, country=None):
         source_name = article.get("source", {}).get("name", "")
     
     # דילוג על כתבות מ-Biztoc.com
-        if source_name.strip().lower() == "biztoc.com":
+        if source_name.strip().lower() == "biztoc.com" or source_name.strip().lower() == "thefly.com":
             print(f"🚫 Skipping article from {source_name}")
             continue
 
@@ -161,10 +161,6 @@ def fetch_and_save_news(category=None, country=None):
     }
 
 
-
-
-
-
 if __name__ == "__main__":
-    fetch_and_save_news()
+   fetch_and_save_news()
 
