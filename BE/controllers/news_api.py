@@ -9,11 +9,12 @@ import cloudinary.uploader
 import urllib.parse
 from io import BytesIO
 from .firebase_db import get_all_news, delete_news
+import requests
 
 
 API_KEY = "cf0598a600744dbb8092ef66ea26ae2b"
 BASE_URL = "https://newsapi.org/v2/everything"
-DEFAULT_IMAGE_URL = "https://example.com/default-image.jpg"
+DEFAULT_IMAGE_URL = "https://images.unsplash.com/photo-1501785888041-af3ef285b470?auto=format&fit=crop&w=800&q=80"
 SERP_API_KEY = "your_serpapi_key"
 
 # הגדרות Cloudinary
@@ -23,6 +24,9 @@ cloudinary.config(
     api_secret="rmagqBMWdt98g57lk84Y5YRvRTk",
     secure=True
 )
+
+UNSPLASH_ACCESS_KEY = "cBZa-52U6-x_27MBH-0EO134vxt5J1t28beeAWwrjzA"
+DEFAULT_IMAGE_URL = "https://images.unsplash.com/photo-1501785888041-af3ef285b470?auto=format&fit=crop&w=800&q=80"
 
 # נושאים אפשריים
 TOPICS = [
@@ -67,14 +71,30 @@ def safe_float(x):
     return float(x) if isinstance(x, (np.float32, np.float64)) else x
 
 
-def generate_image_bytes(prompt: str) -> BytesIO:
-    encoded_prompt = urllib.parse.quote(prompt)
-    image_url = f"https://image.pollinations.ai/prompt/{encoded_prompt}"
-    response = requests.get(image_url)
-    response.raise_for_status()
-    image_bytes = BytesIO(response.content)
-    return image_bytes
+#def generate_image_bytes(prompt: str) -> BytesIO:
+#    encoded_prompt = urllib.parse.quote(prompt)
+#    image_url = f"https://image.pollinations.ai/prompt/{encoded_prompt}"
+ #   response = requests.get(image_url)
+ #   response.raise_for_status()
+#    image_bytes = BytesIO(response.content)
+#    return image_bytes
 
+def get_real_image_url(entities):
+    """
+    מקבלת רשימת entities ומחזירה כתובת תמונה אמיתית מ-Unsplash.
+    אם אין תוצאה - מחזירה תמונה ברירת מחדל.
+    """
+    query = ", ".join([e['text'] for e in entities]) if entities else "news"
+    url = f"https://api.unsplash.com/photos/random?query={requests.utils.quote(query)}&client_id={UNSPLASH_ACCESS_KEY}&orientation=landscape"
+
+    try:
+        response = requests.get(url)
+        response.raise_for_status()
+        data = response.json()
+        return data.get("urls", {}).get("regular", DEFAULT_IMAGE_URL)
+    except Exception as e:
+        print("Unsplash fetch error:", e)
+        return DEFAULT_IMAGE_URL
 
 def fetch_and_save_news(category=None, country=None):
     print("fetch_and_save_news התחילה")
@@ -125,14 +145,20 @@ def fetch_and_save_news(category=None, country=None):
 
         news_id = str(uuid.uuid4())
 
-        image_url = article.get("urlToImage") or generate_image_bytes(title)
-        cloudinary_url = upload_to_cloudinary(image_url, public_id=news_id)
-
         analysis = analyze_article(title, content)
         entities = analysis.get("entities", [])
+
+        # אם אין ישויות, ניצור ישות אחת מהכותרת כדי לקבל תמונה רלוונטית
+        if not entities:
+           entities = [{"text": title}]
+
         for e in entities:
             if 'score' in e:
                 e['score'] = safe_float(e['score'])
+
+        image_url = article.get("urlToImage") or get_real_image_url(entities)
+        cloudinary_url = upload_to_cloudinary(image_url, public_id=news_id)
+
 
         classification = classify_article(content)
         summary = summarize_article(content)
