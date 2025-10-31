@@ -84,7 +84,15 @@ def get_real_image_url(entities):
     מקבלת רשימת entities ומחזירה כתובת תמונה אמיתית מ-Unsplash.
     אם אין תוצאה - מחזירה תמונה ברירת מחדל.
     """
-    query = ", ".join([e['text'] for e in entities]) if entities else "news"
+    if not entities:
+        query = "news"
+    else:
+        # תומך גם ברשימת מחרוזות וגם ברשימת מילונים
+        if isinstance(entities[0], dict):
+            query = ", ".join([e.get('text', '') for e in entities if 'text' in e])
+        else:
+            query = ", ".join(entities)
+
     url = f"https://api.unsplash.com/photos/random?query={requests.utils.quote(query)}&client_id={UNSPLASH_ACCESS_KEY}&orientation=landscape"
 
     try:
@@ -159,6 +167,12 @@ def fetch_and_save_news(category=None, country=None):
         image_url = article.get("urlToImage") or get_real_image_url(entities)
         cloudinary_url = upload_to_cloudinary(image_url, public_id=news_id)
 
+        if not cloudinary_url or "res.cloudinary.com" not in cloudinary_url:
+           print("⚠ Cloudinary upload failed, fetching new image from Unsplash...")
+           cloudinary_url = get_real_image_url(entities)
+           cloudinary_url = upload_to_cloudinary(cloudinary_url, public_id=news_id)
+
+
 
         classification = classify_article(content)
         summary = summarize_article(content)
@@ -185,6 +199,45 @@ def fetch_and_save_news(category=None, country=None):
         "articles": saved_articles,
         "ids": saved_ids
     }
+
+def fix_missing_images_in_firebase():
+    """
+    מעדכנת כתבות קיימות ב-Firebase שאין להן תמונה מ-Cloudinary.
+    במידה ואין תמונה או שהתמונה לא הועלתה ל-Cloudinary,
+    תישלף תמונה רלוונטית מ-Unsplash לפי שדה ה-entities ותועלה ל-Cloudinary.
+    """
+    print("🔍 Checking existing news for missing images...")
+    all_news = get_all_news()
+
+    if not all_news:
+        print("No news found in Firebase.")
+        return
+
+    fixed_count = 0
+
+    for article in all_news:
+        news_id = article.get("id")
+        image_url = article.get("image_url", "")
+        entities = article.get("entities", [])
+        title = article.get("title", "news")
+
+        if not entities:
+            entities = [{"text": title}]
+
+        if not image_url or "res.cloudinary.com" not in image_url:
+            print(f"⚠ Fixing image for article: {title[:50]}...")
+            new_image_url = get_real_image_url(entities)
+            cloudinary_url = upload_to_cloudinary(new_image_url, public_id=news_id)
+
+            if not cloudinary_url or "res.cloudinary.com" not in cloudinary_url:
+                cloudinary_url = DEFAULT_IMAGE_URL
+
+            article["image_url"] = cloudinary_url
+            save_news(news_id, article)
+            fixed_count += 1
+
+    print(f"✅ Finished fixing images. {fixed_count} articles updated.")
+
 
 
 if __name__ == "__main__":
