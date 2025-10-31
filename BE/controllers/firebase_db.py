@@ -65,6 +65,7 @@ def get_all_news():
     return all_news
 
 
+
 def get_news_by_url(url):
     """
     מחפש כתבה לפי השדה 'url' כדי למנוע כפילויות.

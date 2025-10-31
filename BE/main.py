@@ -10,6 +10,7 @@ app.include_router(news_router)
 # הפעלת ה-scheduler
 start_scheduler()
 
+    INTERVAL = 300  # כל 5 דקות
 if __name__ == "__main__":
     INTERVAL = 300  # כל 5 דקות
     print("Starting continuous news fetching loop (Ctrl+C to stop)...\n")
