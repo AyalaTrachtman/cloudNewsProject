@@ -7,102 +7,35 @@ import queue
 import json
 from kafka import KafkaConsumer
 from datetime import datetime
+from cloudNewsProject.kafka_app.app.controllers.producer_controller import send_existing_documents
+from cloudNewsProject.frontend.controllers.news_controller import (
+    start_consumer,
+    update_news,
+    news_by_category,
+    news_queues,
+    CATEGORIES,
+    CATEGORY_COLORS
+)
+from cloudNewsProject.frontend.models.news_models import format_date
+LOGO_URL = "https://res.cloudinary.com/dvzpm0jir/image/upload/v1761764104/%D7%AA%D7%9E%D7%95%D7%A0%D7%94_%D7%A9%D7%9C_WhatsApp_2025-10-29_%D7%91%D7%A9%D7%A2%D7%94_20.47.33_4cdcbad6_iur3fx.jpg"
 
 # --- Path setup ---
 project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '../../..'))
 if project_root not in sys.path:
     sys.path.append(project_root)
-
-# --- Categories ---
-CATEGORIES = ["Politics", "Finance", "Science", "Culture", "Sport", "Technology", "Health", "World"]
-
-# --- Colors per category ---
-CATEGORY_COLORS = {
-    "Politics": "#FF5733",
-    "Finance": "#33B5FF",
-    "Science": "#8D33FF",
-    "Culture": "#FF33A8",
-    "Sport": "#33FF57",
-    "Technology": "#FFC300",
-    "Health": "#33FFF0",
-    "World": "#AAAAAA"
-}
-
-# --- Queue per category ---
-news_queues = {cat: queue.Queue() for cat in CATEGORIES}
-news_by_category = {cat: [] for cat in CATEGORIES}
-
-# --- Kafka setup ---
-KAFKA_BROKER = "localhost:9092"
-consumer = KafkaConsumer(
-    *CATEGORIES,
-    bootstrap_servers=[KAFKA_BROKER],
-    auto_offset_reset='earliest',
-    enable_auto_commit=False,
-    group_id='news_consumer_test',
-    value_deserializer=lambda m: json.loads(m.decode('utf-8'))
-)
-
-def start_consumer():
-    print(f"[Consumer] Listening to topics: {', '.join(CATEGORIES)}")
-    for message in consumer:
-        data = message.value
-        news_item = type("NewsItem", (), {})()
-        news_item.title = data.get("title", "")
-        news_item.description = data.get("content", "")
-        news_item.image_url = data.get("image_url", "")
-        news_item.link = data.get("url", "")
-        news_item.published_at = data.get("published_at", "Unknown date")
-        topic_name = message.topic
-        category = topic_name if topic_name in news_queues else data.get("classification", "World")
-        if category not in news_queues:
-            category = "World"
-
-        news_item.category = category
-        news_queues[category].put(news_item)
-        print(f"[Consumer] Received: {news_item.title} (Topic: {message.topic}, Category: {category})")
-
-def update_news():
- seen_urls = set()  # נשמור אילו כתבות כבר נוספו
- while True:
-    for cat in CATEGORIES:
-        while not news_queues[cat].empty():
-            news_item = news_queues[cat].get()
-            # בדיקה אם כבר ראינו את הכתבה ולוודא שיש לה URL תקין
-            if getattr(news_item, "link", None) and news_item.link not in seen_urls:
-                news_by_category[cat].append(news_item)
-                seen_urls.add(news_item.link)
-
-                # מיון לפי תאריך – הכי חדש ראשון
-                news_by_category[cat].sort(
-                    key=lambda x: datetime.fromisoformat(
-                        getattr(x, "published_at", "1970-01-01").replace("Z", "+00:00")
-                    ),
-                    reverse=True
-                )
-    time.sleep(0.5)
-
-
-threading.Thread(target=start_consumer, daemon=True).start()
-threading.Thread(target=update_news, daemon=True).start()
-# --- Format date helper ---
-def format_date(date_str):
-    """מחזיר רק את התאריך בפורמט YYYY-MM-DD"""
-    try:
-        dt = datetime.fromisoformat(date_str.replace("Z", "+00:00"))
-        return dt.strftime("%Y-%m-%d")
-    except Exception:
-        return date_str.split("T")[0]  # fallback
-
 # --- CSS מעודכן ---
 css = """
+body, .gradio-container {
+    background-color: #fffaf0  !important;  /* רקע בז' רך */
+}
+
 .category-btn-container {
     display: flex;
     justify-content: flex-start;
     align-items: center;
     overflow-x: auto;
-    white-space: nowrap;
-    padding: 11px 30px;
+    padding: 6px 15px;        /* מספיק מקום לשמות מלאים */
+    flex: 0 0 auto;           /* למנוע מהכפתורים להתכווץ */
     position: fixed;
     top: 0;
     left: 0;
@@ -460,39 +393,73 @@ def get_news_html(category):
     html += "</div>"
 
     return html
+# --- Producer ברקע ---
+def periodic_producer():
+    while True:
+        try:
+            # נשלח כתבות קיימות לקפקא – עם מגבלה כדי למנוע עומס
+            send_existing_documents()
+            print("[Producer] Sent news batch to Kafka")
+        except Exception as e:
+            print(f"[Producer] Error: {e}")
+        time.sleep(60)  # ריצה כל דקה
+
+# מפעיל Thread ברקע (daemon=True מבטיח שלא יעכב את ה־UI)
+threading.Thread(target=periodic_producer, daemon=True).start()
 
 
 # --- Gradio UI ---
 with gr.Blocks(css=css) as demo:
     category_buttons = []
     with gr.Row(elem_classes="category-btn-container"):
-        gr.HTML("<div class='logo'>MyNews</div>")
+        gr.HTML(f"""
+            <div style="display:flex; align-items:center; justify-content:flex-start;">
+                <img src="{LOGO_URL}" alt="Logo" width="120" height="120" style="object-fit:contain;">
+            </div>
+        """)
         for cat in CATEGORIES:
-            btn = gr.Button(value=cat[:6], elem_classes="category-btn", elem_id=cat)
+            btn = gr.Button(value=cat, elem_classes="category-btn", elem_id=cat)
             category_buttons.append((btn, cat))
-            
 
     news_output = gr.HTML(elem_classes="news-output")
-    current_category = CATEGORIES[0]  # ברירת מחדל, למשל "Politics"
+    current_category = CATEGORIES[0]
 
     def on_category_click(cat):
+        """כשמשתמש לוחץ על קטגוריה – מציג את החדשות הרלוונטיות"""
         global current_category
         current_category = cat
+        print(f"[UI] Clicked category: {cat}")
         html = get_news_html(cat)
-        js_update = "<script>"
-        js_update += f"document.querySelectorAll('.category-btn').forEach(btn => btn.style.backgroundColor='#555');"
-        js_update += f"document.getElementById('{cat}').style.backgroundColor='{CATEGORY_COLORS.get(cat)}';"
-        js_update += "</script>"
+
+        # הוספת JS לעדכון צבע הכפתור הנבחר
+        js_update = f"""
+        <script>
+        document.querySelectorAll('.category-btn').forEach(btn => {{
+            btn.style.backgroundColor = 'transparent';
+            btn.style.color = '#333';
+        }});
+        const activeBtn = document.getElementById('{cat}');
+        if (activeBtn) {{
+            activeBtn.style.backgroundColor = '{CATEGORY_COLORS.get(cat, "#aaa")}';
+            activeBtn.style.color = 'white';
+        }}
+        </script>
+        """
         return html + js_update
 
+    # תיקון ללולאת הלחצנים (שומר על ה-cat הנכון)
     for btn, cat in category_buttons:
-        btn.click(fn=lambda c=cat: on_category_click(c), inputs=[], outputs=[news_output])
-        timer = gr.Timer(value=5, active=True)  # עדכון כל 5 שניות
+        def make_click_handler(category):
+            return lambda: on_category_click(category)
+        btn.click(fn=make_click_handler(cat), inputs=[], outputs=[news_output])
+
+    # עדכון אוטומטי כל 5 שניות לפי הקטגוריה הנוכחית
+    timer = gr.Timer(value=5, active=True)
     timer.tick(
-    fn=lambda: get_news_html(current_category),
-    inputs=[],
-    outputs=[news_output]
+        fn=lambda: get_news_html(current_category),
+        inputs=[],
+        outputs=[news_output]
     )
 
-
+# הפעלת הממשק
 demo.launch(inbrowser=True)

@@ -1,5 +1,5 @@
 import requests
-from .firebase_db import save_news, news_exists, get_all_news, update_news
+from .firebase_db import save_news, news_exists
 from .huggingface_analyzer import analyze_article
 import uuid
 from transformers import pipeline
@@ -8,11 +8,13 @@ import cloudinary
 import cloudinary.uploader
 import urllib.parse
 from io import BytesIO
-
+from .firebase_db import get_all_news, delete_news
 API_KEY = "cf0598a600744dbb8092ef66ea26ae2b"
-BASE_URL = "https://newsapi.org/v2/top-headlines"
-DEFAULT_IMAGE_URL = "https://example.com/default-image.jpg"
+BASE_URL = "https://newsapi.org/v2/everything"
+DEFAULT_IMAGE_URL = "https://images.unsplash.com/photo-1501785888041-af3ef285b470?auto=format&fit=crop&w=800&q=80"
+SERP_API_KEY = "your_serpapi_key"
 
+# הגדרות Cloudinary
 cloudinary.config(
     cloud_name="dvzpm0jir",
     api_key="431769535972431",
@@ -20,51 +22,29 @@ cloudinary.config(
     secure=True
 )
 
+UNSPLASH_ACCESS_KEY = "cBZa-52U6-x_27MBH-0EO134vxt5J1t28beeAWwrjzA"
+DEFAULT_IMAGE_URL = "https://images.unsplash.com/photo-1501785888041-af3ef285b470?auto=format&fit=crop&w=800&q=80"
+
+# נושאים אפשריים
 TOPICS = [
     "Politics", "Finance", "Science", "Culture",
     "Sport", "Technology", "Health", "World"
 ]
 
+# מודל סיווג Hugging Face (Zero-shot)
 classifier = pipeline(
     "zero-shot-classification",
     model="facebook/bart-large-mnli"
 )
 
 
-def upload_to_cloudinary(image_input, public_id=None):
+def upload_to_cloudinary(image_url, public_id=None):
     try:
-        if isinstance(image_input, str):
-            r = requests.get(image_input, timeout=12)
-            r.raise_for_status()
-            img_bytes = BytesIO(r.content)
-            img_bytes.seek(0)
-            return cloudinary.uploader.upload(
-                img_bytes,
-                public_id=public_id,
-                resource_type="image"
-            )["secure_url"]
-
-        if isinstance(image_input, BytesIO):
-            image_input.seek(0)
-            return cloudinary.uploader.upload(
-                image_input,
-                public_id=public_id,
-                resource_type="image"
-            )["secure_url"]
-
+        result = cloudinary.uploader.upload(image_url, public_id=public_id)
+        return result['secure_url']
     except Exception as e:
-        print("Cloudinary upload failed:", e)
-        return None
-
-
-def fetch_real_image_from_unsplash(query: str) -> BytesIO:
-    query_encoded = urllib.parse.quote(query)
-    url = f"https://source.unsplash.com/800x600/?{query_encoded}"
-    r = requests.get(url, timeout=10)
-    r.raise_for_status()
-    img_bytes = BytesIO(r.content)
-    img_bytes.seek(0)
-    return img_bytes
+        print("Cloudinary upload error:", e)
+        return image_url  # במקרה של כשל
 
 
 def classify_article(content):
@@ -73,7 +53,8 @@ def classify_article(content):
     try:
         result = classifier(content[:512], TOPICS)
         return result["labels"][0]
-    except:
+    except Exception as e:
+        print("Classification error:", e)
         return "World"
 
 
@@ -87,48 +68,108 @@ def safe_float(x):
     return float(x) if isinstance(x, (np.float32, np.float64)) else x
 
 
-def fetch_and_save_news(country="us", category=None):
-    params = {"apiKey": API_KEY, "country": country}
+#def generate_image_bytes(prompt: str) -> BytesIO:
+#    encoded_prompt = urllib.parse.quote(prompt)
+#    image_url = f"https://image.pollinations.ai/prompt/{encoded_prompt}"
+ #   response = requests.get(image_url)
+ #   response.raise_for_status()
+#    image_bytes = BytesIO(response.content)
+#    return image_bytes
+
+def get_real_image_url(entities):
+    """
+    מקבלת רשימת entities ומחזירה כתובת תמונה אמיתית מ-Unsplash.
+    אם אין תוצאה - מחזירה תמונה ברירת מחדל.
+    """
+    if not entities:
+        query = "news"
+    else:
+        # תומך גם ברשימת מחרוזות וגם ברשימת מילונים
+        if isinstance(entities[0], dict):
+            query = ", ".join([e.get('text', '') for e in entities if 'text' in e])
+        else:
+            query = ", ".join(entities)
+
+    url = f"https://api.unsplash.com/photos/random?query={requests.utils.quote(query)}&client_id={UNSPLASH_ACCESS_KEY}&orientation=landscape"
+
+    try:
+        response = requests.get(url)
+        response.raise_for_status()
+        data = response.json()
+        return data.get("urls", {}).get("regular", DEFAULT_IMAGE_URL)
+    except Exception as e:
+        print("Unsplash fetch error:", e)
+        return DEFAULT_IMAGE_URL
+
+def fetch_and_save_news(category=None, country=None):
+    print("fetch_and_save_news התחילה")
+
+    params = {
+        "apiKey": API_KEY,
+        "language": "en",  # רק באנגלית
+        "q": "news",
+        "pageSize": 100,
+        "sortBy": "publishedAt"
+    }
+
     if category:
-        params["category"] = category
+        params["q"] = category
 
     response = requests.get(BASE_URL, params=params)
+    print("Response status:", response.status_code)
+    print("Response text:", response.text[:500])
+
     if response.status_code != 200:
-        return
+        return {"error": f"Failed to fetch news, status: {response.status_code}"}
 
     data = response.json()
+    saved_articles = []
+    saved_ids = []
+
     for article in data.get("articles", []):
+
+        source_name = article.get("source", {}).get("name", "")
+    
+    # דילוג על כתבות מ-Biztoc.com
+        if source_name.strip().lower() == "biztoc.com" or source_name.strip().lower() == "thefly.com":
+            print(f"🚫 Skipping article from {source_name}")
+            continue
+
         content = article.get("description") or article.get("content")
         if not content:
             continue
 
         title = article.get("title", "")
+        source = article.get("source", {}).get("name", "")
         url = article.get("url", "")
+        published_at = article.get("publishedAt")
+
         if news_exists(url):
+            print(f"⚠ Article already exists: {url}")
             continue
 
         news_id = str(uuid.uuid4())
 
-        # 🔹 שומר את התמונה המקורית בלבד (מהכתבה)
-        original_image_url = article.get("urlToImage") or DEFAULT_IMAGE_URL
-
-        # 🔹 רק image_url עובר דרך Cloudinary / fallback
-        if "pollinations.ai" in original_image_url:
-            cloud_url = original_image_url
-        else:
-            cloud_url = upload_to_cloudinary(original_image_url, public_id=news_id)
-            if not cloud_url:
-                try:
-                    fallback = fetch_real_image_from_unsplash(title)
-                    cloud_url = upload_to_cloudinary(fallback, public_id=news_id)
-                except:
-                    cloud_url = DEFAULT_IMAGE_URL
-
         analysis = analyze_article(title, content)
         entities = analysis.get("entities", [])
+
+        # אם אין ישויות, ניצור ישות אחת מהכותרת כדי לקבל תמונה רלוונטית
+        if not entities:
+           entities = [{"text": title}]
+
         for e in entities:
             if 'score' in e:
                 e['score'] = safe_float(e['score'])
+
+        image_url = article.get("urlToImage") or get_real_image_url(entities)
+        cloudinary_url = upload_to_cloudinary(image_url, public_id=news_id)
+
+        if not cloudinary_url or "res.cloudinary.com" not in cloudinary_url:
+           print("⚠ Cloudinary upload failed, fetching new image from Unsplash...")
+           cloudinary_url = get_real_image_url(entities)
+           cloudinary_url = upload_to_cloudinary(cloudinary_url, public_id=news_id)
+
+
 
         classification = classify_article(content)
         summary = summarize_article(content)
@@ -139,62 +180,62 @@ def fetch_and_save_news(country="us", category=None):
             "content": content,
             "summary": summary,
             "url": url,
-            "source": article.get("source", {}).get("name", ""),
-            "image_url": cloud_url,                # Cloudinary או fallback
-            "original_image_url": original_image_url,  # מהכתבה, תמיד מקורית
+            "source": source,
+            "image_url": cloudinary_url,
             "classification": classification,
             "entities": entities,
-            "published_at": article.get("publishedAt")
+            "published_at": published_at
         }
 
         save_news(news_id, news_data)
+        saved_articles.append(news_data)
+        saved_ids.append(news_id)
+
+    return {
+        "message": f"Saved {len(saved_articles)} articles",
+        "articles": saved_articles,
+        "ids": saved_ids
+    }
+
+def fix_missing_images_in_firebase():
+    """
+    מעדכנת כתבות קיימות ב-Firebase שאין להן תמונה מ-Cloudinary.
+    במידה ואין תמונה או שהתמונה לא הועלתה ל-Cloudinary,
+    תישלף תמונה רלוונטית מ-Unsplash לפי שדה ה-entities ותועלה ל-Cloudinary.
+    """
+    print("🔍 Checking existing news for missing images...")
+    all_news = get_all_news()
+
+    if not all_news:
+        print("No news found in Firebase.")
+        return
+
+    fixed_count = 0
+
+    for article in all_news:
+        news_id = article.get("id")
+        image_url = article.get("image_url", "")
+        entities = article.get("entities", [])
+        title = article.get("title", "news")
+
+        if not entities:
+            entities = [{"text": title}]
+
+        if not image_url or "res.cloudinary.com" not in image_url:
+            print(f"⚠ Fixing image for article: {title[:50]}...")
+            new_image_url = get_real_image_url(entities)
+            cloudinary_url = upload_to_cloudinary(new_image_url, public_id=news_id)
+
+            if not cloudinary_url or "res.cloudinary.com" not in cloudinary_url:
+                cloudinary_url = DEFAULT_IMAGE_URL
+
+            article["image_url"] = cloudinary_url
+            save_news(news_id, article)
+            fixed_count += 1
+
+    print(f"✅ Finished fixing images. {fixed_count} articles updated.")
 
 
-def fill_missing_original_image():
-    articles = get_all_news()
-    for article in articles:
-        if "original_image_url" not in article or not article["original_image_url"]:
-            original_image_url = article.get("image_url") or DEFAULT_IMAGE_URL
-            update_news(article["id"], {"original_image_url": original_image_url})
-            print(f"Filled original_image_url for: {article['title']}")
 
-
-def upload_missing_or_fallback_images(max_retries=3):
-    articles = get_all_news()
-    for article in articles:
-        news_id = article["id"]
-        original_url = article.get("original_image_url")
-        current_url = article.get("image_url")
-
-        if current_url and original_url and "pollinations.ai" in current_url:
-            continue
-
-        success = False
-        for _ in range(max_retries):
-            try:
-                if original_url:
-                    r = requests.get(original_url, timeout=10)
-                    r.raise_for_status()
-                    img = BytesIO(r.content)
-                    img.seek(0)
-                    new_url = upload_to_cloudinary(img, public_id=news_id)
-                    update_news(news_id, {"image_url": new_url})
-                    success = True
-                    break
-            except:
-                pass
-
-        if not success:
-            entities_text = " ".join([e.get("word", "") for e in article.get("entities", [])]) or "news"
-            try:
-                fallback = fetch_real_image_from_unsplash(entities_text)
-                url = upload_to_cloudinary(fallback, public_id=news_id)
-            except:
-                url = DEFAULT_IMAGE_URL
-            update_news(news_id, {"image_url": url})
-
-
-if __name__ == "__main__":
-    fill_missing_original_image()
-    upload_missing_or_fallback_images()
-    fetch_and_save_news(country="us")
+if __name__ == "_main_":
+   fetch_and_save_news()

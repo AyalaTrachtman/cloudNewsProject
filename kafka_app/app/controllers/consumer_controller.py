@@ -1,61 +1,62 @@
 from kafka import KafkaConsumer
 import json
 import queue
-import threading
+import time
+from kafka_app.app.views.terminal_view import TerminalView  # ✅ נוספה השורה הזו
 
 # --- קטגוריות ---
 CATEGORIES = ["Politics", "Finance", "Science", "Culture", "Sport", "Technology", "Health", "World"]
 
-# --- יצירת תורים נפרדים לכל קטגוריה ---
 news_queues = {cat: queue.Queue() for cat in CATEGORIES}
 
 KAFKA_BROKER = "localhost:9092"
 
 # --- יצירת KafkaConsumer ---
 consumer = KafkaConsumer(
-    *CATEGORIES,  # מאזין לכל הטופיקים
+    *CATEGORIES,
     bootstrap_servers=[KAFKA_BROKER],
-    auto_offset_reset='earliest',  # מאזין רק להודעות חדשות
-    enable_auto_commit=True,       # שומר את המיקום האחרון שקרא
-    group_id='news_consumer_group',  # מזהה קבוצה ייחודי לצרכן
+    auto_offset_reset='earliest',  # מתחיל מהודעות ראשונות
+    enable_auto_commit=True,
+    group_id='news_consumer_group',
     value_deserializer=lambda m: json.loads(m.decode('utf-8'))
 )
 
-def consume_messages():
-    """מאזין להודעות חדשות בלבד ומכניס לתורים הרלוונטיים"""
-    print(f"[Consumer] ✅ Listening for NEW messages on topics: {', '.join(CATEGORIES)}")
-    for message in consumer:
-        data = message.value
-        print(f"[Consumer] Raw message received: {data}")
+total_count = 0
+no_new_data_seconds = 0  # סופר כמה זמן עבר בלי הודעות חדשות
+check_interval = 1       # poll כל שנייה
+max_no_new_data = 5      # מפסיק אחרי 5 שניות בלי הודעות חדשות
 
-        # יצירת אובייקט כתבה
-        news_item = type("NewsItem", (), {})()
-        news_item.title = data.get("title", "")
-        news_item.description = data.get("content", "")
-        news_item.image_url = data.get("image_url", "")
-        news_item.link = data.get("url", "")
-        news_item.published_at = data.get("published_at", "")
+while True:
+    records = consumer.poll(timeout_ms=1000)  # מושך הודעות זמינות
+    if records:
+        no_new_data_seconds = 0
+        for tp, messages in records.items():
+            for message in messages:
+                data = message.value
+                # יצירת אובייקט כתבה
+                news_item = type("NewsItem", (), {})()
+                news_item.title = data.get("title", "")
+                news_item.description = data.get("content", "")
+                news_item.image_url = data.get("image_url", "")
+                news_item.link = data.get("url", "")
+                news_item.published_at = data.get("published_at", "")
 
-        # קביעת קטגוריה מתוך ה-topic
-        topic_name = message.topic
-        category = topic_name if topic_name in news_queues else data.get("classification", "World")
-        if category not in news_queues:
-            category = "World"
+                # קביעת קטגוריה מתוך ה-topic
+                topic_name = message.topic
+                category = topic_name if topic_name in news_queues else data.get("classification", "World")
+                if category not in news_queues:
+                    category = "World"
 
-        news_queues[category].put(news_item)
-        print(f"[Consumer] 📰 New article: {news_item.title} (Topic: {topic_name})")
-def clear_news_queues():
-    for q in news_queues.values():
-        while not q.empty():
-            q.get()
-    print("[Consumer] 🗑 All news queues cleared")
+                news_queues[category].put(news_item)
+                total_count += 1
 
-def start_consumer():
-    """מפעיל את הצרכן ברקע (thread)"""
-    t = threading.Thread(target=consume_messages, daemon=True)
-    t.start()
-    print("[Consumer] 🚀 Consumer started and waiting for new messages...")
+                # ✅ משתמשים ב־TerminalView להציג כל כתבה שנקלטה
+                TerminalView.show_consumer_event(topic_name, news_item.title)
+    else:
+        no_new_data_seconds += check_interval
 
-if _name_ == "_main_":
-    clear_news_queues()
-    start_consumer()
+    if no_new_data_seconds >= max_no_new_data:
+        break
+
+consumer.close()
+TerminalView.show_message(f"📰 Total articles processed: {total_count}")  # ✅ שימוש ב־TerminalView
