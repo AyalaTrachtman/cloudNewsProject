@@ -1,72 +1,61 @@
 from kafka import KafkaConsumer
 import json
 import queue
-import threading
+import time
+from kafka_app.app.views.terminal_view import TerminalView  # ✅ נוספה השורה הזו
 
 # --- הגדרת קטגוריות ---
 CATEGORIES = ["Politics", "Finance", "Science", "Culture", "Sport", "Technology", "Health", "World"]
 
-# --- יצירת תורים נפרדים לכל קטגוריה ---
 news_queues = {cat: queue.Queue() for cat in CATEGORIES}
 
 KAFKA_BROKER = "localhost:9092"
-TOPIC = "World"  # אפשר לשנות לפי הצורך
 
 consumer = KafkaConsumer(
-    TOPIC,
+    *CATEGORIES,
     bootstrap_servers=[KAFKA_BROKER],
-    auto_offset_reset='earliest',
-    enable_auto_commit=False,
-    group_id='news_consumer_test',
+    auto_offset_reset='earliest',  # מתחיל מהודעות ראשונות
+    enable_auto_commit=True,
+    group_id='news_consumer_group',
     value_deserializer=lambda m: json.loads(m.decode('utf-8'))
 )
 
+total_count = 0
+no_new_data_seconds = 0  # סופר כמה זמן עבר בלי הודעות חדשות
+check_interval = 1       # poll כל שנייה
+max_no_new_data = 5      # מפסיק אחרי 5 שניות בלי הודעות חדשות
 
-def start_consumer(on_new_news=None):
-    """
-    מאזין ל-Kafka ומעביר כל כתבה חדשה לפונקציית callback (אם הוגדרה),
-    או פשוט שומר אותה בתור של הקטגוריה.
-    """
-    print(f"[Consumer] Listening to topic '{TOPIC}'...")
+while True:
+    records = consumer.poll(timeout_ms=1000)  # מושך הודעות זמינות
+    if records:
+        no_new_data_seconds = 0
+        for tp, messages in records.items():
+            for message in messages:
+                data = message.value
+                # יצירת אובייקט כתבה
+                news_item = type("NewsItem", (), {})()
+                news_item.title = data.get("title", "")
+                news_item.description = data.get("content", "")
+                news_item.image_url = data.get("image_url", "")
+                news_item.link = data.get("url", "")
+                news_item.published_at = data.get("published_at", "")
 
-    for message in consumer:
-        data = message.value
-        print(f"[Consumer] Raw message received: {data}")
+                # קביעת קטגוריה מתוך ה-topic
+                topic_name = message.topic
+                category = topic_name if topic_name in news_queues else data.get("classification", "World")
+                if category not in news_queues:
+                    category = "World"
 
-        news_id = data.get("id")  # מזהה הכתבה
-        title = data.get("title", "")
-        classification = data.get("classification", "World")
+                news_queues[category].put(news_item)
+                total_count += 1
 
-        # יצירת אובייקט כתבה פשוט
-        news_item = type("NewsItem", (), {})()
-        news_item.id = news_id
-        news_item.title = title
-        news_item.description = data.get("content", "")
-        news_item.image_url = data.get("image_url", "")
+                # ✅ משתמשים ב־TerminalView להציג כל כתבה שנקלטה
+                TerminalView.show_consumer_event(topic_name, news_item.title)
+    else:
+        no_new_data_seconds += check_interval
 
-        # הוספה לתור לפי קטגוריה
-        if classification in news_queues:
-            news_queues[classification].put(news_item)
-        else:
-            news_queues["World"].put(news_item)
+    if no_new_data_seconds >= max_no_new_data:
+        break
 
-        print(f"[Consumer] Received: {title} (Category: {classification})")
-
-        # אם יש פונקציית callback (למשל מ-Gradio) — לקרוא לה
-        if on_new_news and news_id:
-            try:
-                on_new_news(news_id)
-                print(f"[Consumer] Triggered callback for news ID: {news_id}")
-            except Exception as e:
-                print(f"[Consumer] ⚠️ Error in callback: {e}")
-
-
-if __name__ == "__main__":
-    # מצב בדיקה: רק מדפיס הודעות
-    t = threading.Thread(target=start_consumer, daemon=True)
-    t.start()
-
-    try:
-        threading.Event().wait()
-    except KeyboardInterrupt:
-        print("Stopped")
+consumer.close()
+TerminalView.show_message(f"📰 Total articles processed: {total_count}")  # ✅ שימוש ב־TerminalView

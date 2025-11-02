@@ -8,6 +8,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../.
 from firebase_admin import credentials, firestore, initialize_app
 from kafka import KafkaProducer
 from kafka_app.app.models.message_model import Message
+from kafka_app.app.views.terminal_view import TerminalView  # ✅ נוספה השורה הזו
 
 cred_path = os.path.join(os.path.dirname(__file__), '../FireBaseKey.json')
 cred = credentials.Certificate(cred_path)
@@ -26,19 +27,17 @@ VALID_TOPICS = [
     "Technology", "Health", "World"
 ]
 
-# ✅ נוסיף סט שיזהה אילו כתבות כבר נשלחו
+# סט כדי למנוע שליחה כפולה של כתבות
 sent_urls = set()
+sent_count = 0  # מונה של כתבות שנכנסו ל-Kafka
+
 
 def send_message_to_kafka(doc):
     """שולח מסמך ל-Kafka תוך טיפול ב-topic חוקי"""
+    global sent_count
     url = doc.get('url')
-    if not url:
-        return
-
-    # ✅ לא נשלח אם כבר שלחנו כתבה עם אותו URL
-    if url in sent_urls:
-        print(f"[Producer] Skipping duplicate: {url}")
-        return
+    if not url or url in sent_urls:
+        return  # כבר נשלח או אין URL
     sent_urls.add(url)
 
     msg = Message(
@@ -59,23 +58,25 @@ def send_message_to_kafka(doc):
     else:
         topic = classification or 'World'
 
-    topic = re.sub(r'[^a-zA-Z0-9._-]', '_', str(topic))
-
+    topic = re.sub(r'[^a-zA-Z0-9.-]', '', str(topic))
     if topic not in VALID_TOPICS:
-        print(f"[Producer] ⚠️ Invalid topic '{topic}', using 'World' instead.")
         topic = "World"
 
-    print(f"[Producer] Sending to topic '{topic}' ({type(topic)})")
     producer.send(topic, msg)
-    print(f"[Producer] Sent: {msg.title}")
     producer.flush()
+
+    sent_count += 1  # עדכון המונה
+    TerminalView.show_producer_event(topic, msg.title)  # ✅ שימוש ב־TerminalView
+
 
 def send_existing_documents():
     """שולח את כל המסמכים הקיימים במסד ל-Kafka"""
-    print("[Producer] Sending existing documents to Kafka...")
     docs = db.collection('news').stream()
     for doc in docs:
         send_message_to_kafka(doc.to_dict())
+
+    TerminalView.show_message(f"Total documents sent to Kafka: {sent_count}")  # ✅ שימוש ב־TerminalView
+
 
 def on_snapshot(col_snapshot, changes, read_time):
     """מאזין לשינויים בזמן אמת ומעביר ל-Kafka"""
@@ -83,9 +84,14 @@ def on_snapshot(col_snapshot, changes, read_time):
         if change.type.name == 'ADDED':
             send_message_to_kafka(change.document.to_dict())
 
+    TerminalView.show_message(f"Total documents sent to Kafka: {sent_count}")  # ✅ שימוש ב־TerminalView
+
+
+# שליחת מסמכים קיימים
 send_existing_documents()
 
-col_ref = db.collection('news')
-col_ref.on_snapshot(on_snapshot)
+# מאזין למסמכים חדשים בזמן אמת
+# col_ref = db.collection('news')
+# col_ref.on_snapshot(on_snapshot)
 
-print("[Producer] Listening to Firebase for new documents...")
+TerminalView.show_message("Listening to Firebase for new documents...")  # ✅ שימוש ב־TerminalView
