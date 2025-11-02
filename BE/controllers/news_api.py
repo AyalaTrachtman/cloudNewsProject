@@ -10,23 +10,25 @@ import urllib.parse
 from io import BytesIO
 from .firebase_db import get_all_news, delete_news
 import requests
+from dotenv import load_dotenv
+import os
+load_dotenv()
 
 
-API_KEY = "cf0598a600744dbb8092ef66ea26ae2b"
-BASE_URL = "https://newsapi.org/v2/everything"
-DEFAULT_IMAGE_URL = "https://images.unsplash.com/photo-1501785888041-af3ef285b470?auto=format&fit=crop&w=800&q=80"
-SERP_API_KEY = "your_serpapi_key"
+API_KEY = os.getenv("API_KEY")
+BASE_URL = os.getenv("BASE_URL")
+DEFAULT_IMAGE_URL = os.getenv("DEFAULT_IMAGE_URL")
 
 # הגדרות Cloudinary
 cloudinary.config(
-    cloud_name="dvzpm0jir",
-    api_key="431769535972431",
-    api_secret="rmagqBMWdt98g57lk84Y5YRvRTk",
+    cloud_name=os.getenv("CLOUD_NAME"),
+    api_key=os.getenv("CLOUD_API_KEY"),
+    api_secret=os.getenv("CLOUD_API_SECRET"),
     secure=True
 )
 
-UNSPLASH_ACCESS_KEY = "cBZa-52U6-x_27MBH-0EO134vxt5J1t28beeAWwrjzA"
-DEFAULT_IMAGE_URL = "https://images.unsplash.com/photo-1501785888041-af3ef285b470?auto=format&fit=crop&w=800&q=80"
+UNSPLASH_ACCESS_KEY = os.getenv("UNSPLASH_ACCESS_KEY")
+DEFAULT_IMAGE_URL = os.getenv("DEFAULT_IMAGE_URL")
 
 # נושאים אפשריים
 TOPICS = [
@@ -135,7 +137,7 @@ def fetch_and_save_news(category=None, country=None):
     
     # דילוג על כתבות מ-Biztoc.com
         if source_name.strip().lower() == "biztoc.com" or source_name.strip().lower() == "thefly.com":
-            print(f"🚫 Skipping article from {source_name}")
+            print(f"Skipping article from {source_name}")
             continue
 
         content = article.get("description") or article.get("content")
@@ -148,7 +150,7 @@ def fetch_and_save_news(category=None, country=None):
         published_at = article.get("publishedAt")
 
         if news_exists(url):
-            print(f"⚠ Article already exists: {url}")
+            print(f"Article already exists: {url}")
             continue
 
         news_id = str(uuid.uuid4())
@@ -168,7 +170,7 @@ def fetch_and_save_news(category=None, country=None):
         cloudinary_url = upload_to_cloudinary(image_url, public_id=news_id)
 
         if not cloudinary_url or "res.cloudinary.com" not in cloudinary_url:
-           print("⚠ Cloudinary upload failed, fetching new image from Unsplash...")
+           print("Cloudinary upload failed, fetching new image from Unsplash...")
            cloudinary_url = get_real_image_url(entities)
            cloudinary_url = upload_to_cloudinary(cloudinary_url, public_id=news_id)
 
@@ -206,7 +208,7 @@ def fix_missing_images_in_firebase():
     במידה ואין תמונה או שהתמונה לא הועלתה ל-Cloudinary,
     תישלף תמונה רלוונטית מ-Unsplash לפי שדה ה-entities ותועלה ל-Cloudinary.
     """
-    print("🔍 Checking existing news for missing images...")
+    print("Checking existing news for missing images...")
     all_news = get_all_news()
 
     if not all_news:
@@ -236,7 +238,7 @@ def fix_missing_images_in_firebase():
             save_news(news_id, article)
             fixed_count += 1
 
-    print(f"✅ Finished fixing images. {fixed_count} articles updated.")
+    print(f"Finished fixing images. {fixed_count} articles updated.")
 
 
 
